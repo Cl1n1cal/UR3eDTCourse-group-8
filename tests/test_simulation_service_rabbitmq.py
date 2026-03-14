@@ -1,25 +1,13 @@
 from services.simulation_service import SimulationService
 import numpy as np
-import roboticstoolbox as rtb
-import time
 from startup.start_docker_rabbitmq import start_rabbitmq
-import communication.factory as factory
+from communication.factory import RabbitMQFactory
 from communication.protocol import ROUTING_KEY_STATE
 import threading
 
 # Description: Tests that we can get state messages from the controller and that they can be sent and received over rabbitmq.
 
 pi = np.pi
-# Maybe use later
-# ur3e_service.set_fault(15, "stuck_joint") # Example fault injection after 15 steps
-
-start_rabbitmq() # Start the rabbitmq server (remember to turn on docker first)
-
-fac = factory.RabbitMQFactory()
-print("Creating cli")
-client = fac.create_rabbitmq()
-print("Creating sub")
-subscriber = fac.create_rabbitmq()
 
 # define a callback function to handle received messages
 def on_message_received(ch, method, properties, body):
@@ -38,17 +26,27 @@ def run_subscriber():
     print("Subscriber start consuming")
     subscriber.start_consuming()
 
-threading.Thread(
-    target=run_subscriber,
-    daemon=True
-).start()
+# Maybe use later
+# ur3e_service.set_fault(15, "stuck_joint") # Example fault injection after 15 steps
 
-simulation_service = SimulationService()
+if __name__ == "__main__":
+    start_rabbitmq() # Start the rabbitmq server (remember to turn on docker first)
 
-q_end = [0.0, -pi/2, pi/2, -pi/2, -pi/2, 0.0] # From exercise class
-max_velocity = 60 # deg/s
-acceleration = 80 # deg/s²
+    #crerates a rabbitmq instance for the simulation service to publish messages to
+    simulation_service = SimulationService()
 
-simulation_service.load_program(q_end, max_velocity, acceleration)
-simulation_service.play()
+    print("Creating sub")
+    subscriber = RabbitMQFactory.create_rabbitmq()
+
+    threading.Thread(
+        target=run_subscriber,
+        daemon=True
+    ).start()
+
+    q_end = np.array([0.0, -pi/2, pi/2, -pi/2, -pi, 0.0]) # From exercise class
+    max_velocity = 60 # deg/s
+    acceleration = 80 # deg/s²
+
+    simulation_service.load_program(q_end, max_velocity, acceleration)
+    simulation_service.play()
  
