@@ -1,4 +1,4 @@
-from services.simulation_service import UR3eService
+from services.simulation_service import SimulationService
 import numpy as np
 from startup.start_docker_rabbitmq import start_rabbitmq
 from communication.protocol import ROUTING_KEY_STATE
@@ -14,16 +14,16 @@ pi = np.pi
 q_start = [0.0, -pi/2, pi/2, -pi/2, -pi/2, 0.0] # From exercise class. Upright with joints tucked a bit
 q_end = [0.0, -pi/2, pi/2, -pi/2, -pi/1, 0.0] # Move 5th joint a bit
 
-ur3e_service = UR3eService()
-ur3e_service.set_start_pos(q_start)
+simulation_service = SimulationService()
+simulation_service.set_start_pos(q_start)
 
 max_velocity = 60 # deg/s
 acceleration = 80 # deg/s²
 
-ur3e_service.load_program(q_end, max_velocity, acceleration)
-ur3e_service.play()
+simulation_service.load_program(q_end, max_velocity, acceleration)
+simulation_service.play()
 
-robot_data: RobotData = ur3e_service.get_results()
+robot_data: RobotData = simulation_service.get_results()
 
 time_stamps = robot_data.get_time_stamps()
 

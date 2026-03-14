@@ -4,7 +4,7 @@ import roboticstoolbox as rtb
 from roboticstoolbox.tools.trajectory import Trajectory
 from spatialmath import SE3
 from spatialmath.base import tr2rpy
-from utils.calculation_functions import compute_time_and_steps
+from utils.calculation_functions import compute_steps
 from communication.protocol import RobotArmStateKeys
 from utils.constants import step_size, pi
 

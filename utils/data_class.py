@@ -8,11 +8,11 @@ class RobotData:
 """
 
 class RobotData:
-    def __init__(self, q_actual: list[float], qd_actual: list[float], time_stamps: list[float], tcp_pose):
-        self.q_actual: list[list[float]] = q_actual # List of list of float since we have 6 joint positions for each time step
-        self.qd_actual: list[list[float]] = qd_actual
-        self.time_stamps: list[float] = time_stamps
-        self.tcp_pose = tcp_pose
+    def __init__(self):
+        self.q_actual: list[list[float]] = [] # List of list of float since we have 6 joint positions for each time step
+        self.qd_actual: list[list[float]] = []
+        self.time_stamps: list[float] = []
+        self.tcp_pose = []
 
     def add_q_actual(self, q: list[float]):
         self.q_actual.append(q)

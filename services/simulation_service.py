@@ -13,7 +13,7 @@ from utils.data_class import RobotData
 class SimulationService:
     def __init__(self, should_publish_to_rabbitmq: bool = False):
         self.robot_arm_kinematics_model = RobotArmKinematicsModel()
-        self.controller_model = ControllerModel(self.robot_arm_kinematics_model)
+        self.controller_model = ControllerModel()
         self.fault_after_n_steps: int = -1
         self.pause_after_n_steps: int = -1
         self.stop_after_n_steps: int = -1
@@ -23,9 +23,10 @@ class SimulationService:
         self.robot_data = RobotData()
         self.should_publish_to_rabbitmq: bool = should_publish_to_rabbitmq
         
-        self.rabbitmq_factory = RabbitMQFactory()
-        self.rabbitmq: Rabbitmq = self.rabbitmq_factory.create_rabbitmq()
-        self.rabbitmq.connect_to_server() # Method already contains try catch clause
+        if self.should_publish_to_rabbitmq:
+            self.rabbitmq_factory = RabbitMQFactory()
+            self.rabbitmq: Rabbitmq = self.rabbitmq_factory.create_rabbitmq()
+            self.rabbitmq.connect_to_server() # Method already contains try catch clause
         
     def set_start_pos(self, q_start: list[float]) -> None:
         self.robot_arm_kinematics_model.set_start_pos(q_start)

@@ -1,4 +1,4 @@
-from services.simulation_service import UR3eService
+from services.simulation_service import SimulationService
 import numpy as np
 import roboticstoolbox as rtb
 import time
