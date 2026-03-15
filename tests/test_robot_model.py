@@ -8,7 +8,7 @@ model = robot_model.RobotModel(step_size=STEP_SIZE, start_time=0.0)
 
 end_q = np.array([2, -0.5, 3.2, -3, -2, 1.5]) # Target joint positions in radians
 model.load_program(end_q, max_velocity=np.pi, acceleration=np.pi)
-model.start()
+model.play()
 
 time_stamps = []
 q_values = []
@@ -20,7 +20,7 @@ for i in range(int(SIM_DURATION / STEP_SIZE)):
     if current_time == 0.5:  # Example of pausing at step 100
         model.pause()
     if current_time == 2:  # Example of resuming at step 200
-        model.start()
+        model.play()
     model.step(current_time)
     #print(f"Step {i}: q_current = {model.get_q_current()}, dq_current = {model.get_dq_current()}, ddq_current = {model.get_ddq_current()}")
     # Store the results for analysis

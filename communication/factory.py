@@ -1,14 +1,10 @@
-import pika
-import logging
-import ssl as ssl_package
 from .protocol import *
 from .rabbitmq import *
 
 class RabbitMQFactory:
-    def __init__(self):
-        pass
-
-    def create_rabbitmq(self) -> Rabbitmq:
+    
+    @staticmethod
+    def create_rabbitmq() -> Rabbitmq:
         rmq = Rabbitmq(
                 ip="localhost",
                 port=5672,
