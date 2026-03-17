@@ -3,6 +3,8 @@ import roboticstoolbox as rtb
 import utils.calculation_functions as calc
 import communication.protocol as protocol
 from communication.protocol import RobotMode
+from utils.constants import pi, zero
+import spatialmath as spm
 
 class RobotModel:
     def __init__(self, step_size: float = 0.01):
@@ -10,6 +12,7 @@ class RobotModel:
         self.qd_current = np.zeros(6)
         self.qdd_current = np.zeros(6)
         self.q_end = np.zeros(6)
+        self.tcp_pose = spm.SE3() # Position [0 0 0]
         self.trajectory = None
 
         self.max_velocity = 0
@@ -21,6 +24,37 @@ class RobotModel:
         self.state = RobotMode.ROBOT_MODE_IDLE
         self.step_size = step_size
         self.current_traj_index = 0
+        self.robot: rtb.DHRobot = self.create_robot()
+
+    def create_robot(self):
+        # Code from the UR3 class in roboticstoolbox
+        # robot length values (metres)
+        a = [0, -0.24365, -0.21325, 0, 0, 0]
+        d = [0.1519, 0, 0, 0.11235, 0.08535, 0.0819]
+
+        alpha = [pi / 2, zero, zero, pi / 2, -pi / 2, zero]
+
+        # mass data, no inertia available
+        mass = [2, 3.42, 1.26, 0.8, 0.8, 0.35]
+        center_of_mass = [
+            [0, -0.02, 0],
+            [0.13, 0, 0.1157],
+            [0.05, 0, 0.0238],
+            [0, 0, 0.01],
+            [0, 0, 0.01],
+            [0, 0, -0.02],
+        ]
+        links = []
+        for j in range(6):
+            link = rtb.RevoluteDH(
+                d=d[j], a=a[j], alpha=alpha[j], m=mass[j], r=center_of_mass[j], G=1
+            )
+            links.append(link)
+        
+        # 6 link robot
+        robot = rtb.DHRobot([links[0], links[1], links[2], links[3], links[4], links[5]], name="UR3e-robot")
+
+        return robot
     
     def set_q_current(self, q_current: np.ndarray):
         self.q_current = q_current
@@ -33,6 +67,9 @@ class RobotModel:
     
     def get_qdd_current(self) -> np.ndarray:
         return self.qdd_current
+    
+    def get_tcp_pose_current(self) -> spm.SE3:
+        return self.tcp_pose
 
     def step(self, current_time: float):
 
@@ -52,6 +89,7 @@ class RobotModel:
             self.q_current = traj_q[self.current_traj_index]
             self.qd_current = traj_qd[self.current_traj_index]
             self.qdd_current = traj_qdd[self.current_traj_index]
+            self.tcp_pose = self.robot.fkine(self.q_current) # Calculate the current tcp pose using current joint positions
         
             self.current_traj_index += 1
         else:
@@ -89,7 +127,3 @@ class RobotModel:
     def set_move_traj(self):
         self.current_traj_index = 0
         self.trajectory = rtb.jtraj(self.q_current, self.q_end, calc.compute_steps(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size), qd0=self.qd_current)
-    
-    def get_current_tcp_pose(self):
-        # For simplicity, we return a fixed TCP pose. In a real implementation, this would be computed based on the current joint angles.
-        return np.eye(4)  # Identity matrix as a placeholder

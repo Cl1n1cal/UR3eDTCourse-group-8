@@ -1,5 +1,9 @@
 import models.robot_model as robot_model
 import numpy as np
+from numpy import linspace
+from mpl_toolkits import mplot3d
+from roboticstoolbox.backends.swift import Swift
+import matplotlib as plt
 
 SIM_DURATION = 3.0  # seconds
 STEP_SIZE = 0.001
@@ -14,6 +18,7 @@ time_stamps = []
 q_values = []
 qd_values = []
 qdd_values = []
+tcp_poses = []
 
 for i in range(int(SIM_DURATION / STEP_SIZE)):
     current_time = i * model.step_size
@@ -28,6 +33,7 @@ for i in range(int(SIM_DURATION / STEP_SIZE)):
     q_values.append(model.get_q_current().copy())
     qd_values.append(model.get_qd_current().copy())
     qdd_values.append(model.get_qdd_current().copy())
+    tcp_poses.append(model.get_tcp_pose_current().t.copy()) # .t to extract x y z values as a list
 
 #plot the results
 import matplotlib.pyplot as plt
@@ -45,4 +51,23 @@ for i in range(6):
     plt.xlabel('Time (s)')
     plt.ylabel('Value')
     plt.legend()
-plt.savefig('robot_model_test_results.png')
+#plt.savefig('robot_model_test_results.png')
+plt.plot()
+plt.show()
+
+# TCP poses picture
+xs = [p[0] for p in tcp_poses]
+ys = [p[1] for p in tcp_poses]
+zs = [p[2] for p in tcp_poses]
+
+fig = plt.figure()
+ax = fig.add_subplot(projection='3d')
+
+ax.plot(xs, ys, zs, '-o')
+plt.show()
+
+robot = model.robot
+traj = model.trajectory.q
+robot.plot(traj, backend='pyplot')
+
+#plt.plot()

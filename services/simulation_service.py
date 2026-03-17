@@ -35,7 +35,7 @@ class SimulationService:
             RobotArmStateKeys.TIMESTAMP: self.time,
             RobotArmStateKeys.JOINT_MAX_SPEED: self.robot_model.max_velocity,
             RobotArmStateKeys.JOINT_MAX_ACCELERATION: self.robot_model.max_acceleration,
-            RobotArmStateKeys.TCP_POSE: self.robot_model.get_current_tcp_pose().tolist()
+            RobotArmStateKeys.TCP_POSE: self.robot_model.get_tcp_pose_current().t
         }
         self.publisher.send_message(routing_key=MODEL_ROUTING_KEY_STATE, message=data)
         
