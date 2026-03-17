@@ -19,7 +19,6 @@ class Rabbitmq:
         self.vhost = vhost
         self.exchange_name = exchange
         self.exchange_type = type
-        print(f"Rabbitmq created with: username: {username}, password: {password}")
         
         credentials = pika.PlainCredentials(username, password)
         if ssl is None:
