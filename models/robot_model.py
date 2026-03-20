@@ -3,7 +3,6 @@ import roboticstoolbox as rtb
 import utils.calculation_functions as calc
 import communication.protocol as protocol
 from communication.protocol import RobotMode
-from utils.constants import pi, zero
 import spatialmath as spm
 
 class RobotModel:
@@ -15,8 +14,8 @@ class RobotModel:
         self.tcp_pose = spm.SE3() # Position [0 0 0]
         self.trajectory = None
 
-        self.max_velocity = 0
-        self.max_acceleration = 0
+        self.max_velocity = 0.0
+        self.max_acceleration = 0.0
 
         self.phy_max_acceleration = 4*np.pi
         self.phy_max_velocity = np.pi
@@ -32,7 +31,7 @@ class RobotModel:
         a = [0, -0.24365, -0.21325, 0, 0, 0]
         d = [0.1519, 0, 0, 0.11235, 0.08535, 0.0819]
 
-        alpha = [pi / 2, zero, zero, pi / 2, -pi / 2, zero]
+        alpha = [np.pi / 2, 0.0, 0.0, np.pi / 2, -np.pi / 2, 0.0]
 
         # mass data, no inertia available
         mass = [2, 3.42, 1.26, 0.8, 0.8, 0.35]
@@ -67,6 +66,9 @@ class RobotModel:
     
     def get_qdd_current(self) -> np.ndarray:
         return self.qdd_current
+    
+    def get_q_end(self) -> np.ndarray:
+        return self.q_end
     
     def get_tcp_pose_current(self) -> spm.SE3:
         return self.tcp_pose
@@ -115,8 +117,8 @@ class RobotModel:
 
     def clear_program(self):
         self.q_end = np.zeros(6)
-        self.max_velocity = 0
-        self.max_acceleration = 0
+        self.max_velocity = 0.0
+        self.max_acceleration = 0.0
         self.trajectory = None
 
     def set_halt_traj(self):
