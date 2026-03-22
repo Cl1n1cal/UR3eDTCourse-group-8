@@ -1,7 +1,5 @@
 from services.db_recorder_service import DBRecorderService
 from utils.configuration import load_config
-import os
-import logging
 
 def start_db_recorder_service(ok_queue=None):
 
