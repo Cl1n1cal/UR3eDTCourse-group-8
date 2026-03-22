@@ -1,12 +1,12 @@
 import numpy as np
 import time
 from datetime import datetime, timezone
-import logging
 import math
 import threading
 from models.robot_model import RobotModel
 from communication.rabbitmq import Rabbitmq, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_CTRL, ROUTING_KEY_RECORDER, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys
 from communication.factory import RabbitMQFactory
+from communication.protocol import unroll_list
 from startup.utils.config import load_config_w_setuptools; c=load_config_w_setuptools('startup.conf');
 from startup.utils.logging_config import create_service_logger
 
@@ -136,9 +136,3 @@ class SimulationService:
         }
 
         return mdata
-
-def unroll_list(key_prefix, values):
-    return {
-        f"{key_prefix}_{i}": v
-        for i, v in enumerate(values)
-    }
