@@ -2,14 +2,17 @@ from communication.protocol import ROUTING_KEY_STATE, ROUTING_KEY_RECORDER, Robo
 from communication.factory import RabbitMQFactory
 from startup.utils.logging_config import create_service_logger
 from communication.protocol import unroll_list
+from datetime import datetime, timezone
+import logging
 
 class MockupStatePublisher:
 
     def __init__(self):
         self.rabbitmq = RabbitMQFactory.create_rabbitmq()
-        self._l = create_service_logger("mockup_state_publisher")
+        self._l = create_service_logger("mockup_state_publisher", level=logging.DEBUG)
     
     def setup(self):
+        self._l.info("Setting up mockup publisher")
         self.rabbitmq.connect_to_server()
         self.rabbitmq.subscribe(routing_key=ROUTING_KEY_STATE,
                                 on_message_callback=self.forward_state_message)
@@ -31,15 +34,14 @@ class MockupStatePublisher:
             self._l.warning(f"Missing required fields: {missing}")
             return None
         
-        return {key: message[key] for key in required_keys}
+        return message
     
     def format_recorder_state_message(self, data: dict) -> dict:
-        timestamp = data[RobotArmStateKeys.TIMESTAMP]
-
+        timestamp = datetime.fromtimestamp(data[RobotArmStateKeys.TIMESTAMP], timezone.utc).isoformat()
         fields = {}
-        fields[RobotArmStateKeys.ROBOT_MODE] = data[RobotArmStateKeys.ROBOT_MODE],
-        fields[RobotArmStateKeys.JOINT_MAX_SPEED] = data[RobotArmStateKeys.JOINT_MAX_SPEED],
-        fields[RobotArmStateKeys.JOINT_MAX_ACCELERATION] = data[RobotArmStateKeys.JOINT_MAX_ACCELERATION],
+        fields[RobotArmStateKeys.ROBOT_MODE] = data[RobotArmStateKeys.ROBOT_MODE]
+        fields[RobotArmStateKeys.JOINT_MAX_SPEED] = data[RobotArmStateKeys.JOINT_MAX_SPEED]
+        fields[RobotArmStateKeys.JOINT_MAX_ACCELERATION] = data[RobotArmStateKeys.JOINT_MAX_ACCELERATION]
 
         fields.update(unroll_list(RobotArmStateKeys.Q_ACTUAL, data[RobotArmStateKeys.Q_ACTUAL]))
         fields.update(unroll_list(RobotArmStateKeys.QD_ACTUAL, data[RobotArmStateKeys.QD_ACTUAL]))
