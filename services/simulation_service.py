@@ -64,7 +64,9 @@ class SimulationService:
         self.robot_model.step(self.time)
     
     def setup(self):
-        self.robot_model.set_q_current(np.array(c.get("digital_twin.robot_model.initial_q", [0.0,0.0,0.0,0.0,0.0,0.0])))
+        self.robot_model.setup_initial_state(np.array(c.get("digital_twin.robot_model.initial_q", [0.0,0.0,0.0,0.0,0.0,0.0])), 
+                                             c.get("digital_twin.robot_model.max_velocity", 0.0),  
+                                             c.get("digital_twin.robot_model.acceleration", 0.0))
         self.publisher.connect_to_server()
         self.consumer.connect_to_server()
         self.consumer.subscribe(routing_key=ROUTING_KEY_CTRL,
@@ -102,8 +104,8 @@ class SimulationService:
 
         fields = {
             RobotArmStateKeys.ROBOT_MODE: self.robot_model.state,
-            RobotArmStateKeys.JOINT_MAX_SPEED: self.robot_model.max_velocity,
-            RobotArmStateKeys.JOINT_MAX_ACCELERATION: self.robot_model.max_acceleration,
+            RobotArmStateKeys.JOINT_MAX_SPEED: math.degrees(self.robot_model.max_velocity),
+            RobotArmStateKeys.JOINT_MAX_ACCELERATION: math.degrees(self.robot_model.max_acceleration),
         }
 
         fields.update(unroll_list(RobotArmStateKeys.Q_ACTUAL, self.robot_model.get_q_current().tolist()))
