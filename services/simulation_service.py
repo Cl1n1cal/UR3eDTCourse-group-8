@@ -11,7 +11,7 @@ from startup.utils.config import load_config_w_setuptools; c=load_config_w_setup
 from startup.utils.logging_config import create_service_logger
 
 class SimulationService:
-    def __init__(self, start_time: float = 0.0):
+    def __init__(self, start_time: float = time.time()):
         self.step_size = c.get("digital_twin.robot_model.step_size", 0.01)
         self.publish_period = c.get("digital_twin.robot_model.publish_period", 0.05)
         

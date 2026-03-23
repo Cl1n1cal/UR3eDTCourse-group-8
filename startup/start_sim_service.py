@@ -5,7 +5,7 @@ import time
 from services.simulation_service import SimulationService
 
 def start_sim_service(ok_queue=None):
-    sim_service = SimulationService(time.time())
+    sim_service = SimulationService()
   
     sim_service.setup()
     if ok_queue is not None:

@@ -3,7 +3,7 @@ import time
 
 def start_mockup_state_publisher(ok_queue=None):
 
-    publisher = MockupStatePublisher(time.time())
+    publisher = MockupStatePublisher()
     publisher.setup()
 
     if ok_queue is not None:

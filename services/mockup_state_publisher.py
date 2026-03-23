@@ -3,14 +3,16 @@ from communication.factory import RabbitMQFactory
 from startup.utils.logging_config import create_service_logger
 from communication.protocol import unroll_list
 from datetime import datetime, timezone
+import time
 import logging
 
 class MockupStatePublisher:
 
-    def __init__(self, start_time: float = 0.0):
+    def __init__(self):
         self.rabbitmq = RabbitMQFactory.create_rabbitmq()
-        self.start_time = start_time
+        self.start_time = 0.0
         self._l = create_service_logger("mockup_state_publisher", level=logging.DEBUG)
+        self.is_first_message = True
     
     def setup(self):
         self._l.info("Setting up mockup publisher")
@@ -62,11 +64,15 @@ class MockupStatePublisher:
     
     def forward_state_message(self, ch, method, properties, message: dict):
         self._l.debug(f"Received mockup state message: {message}")
-        
+
         data = self.validate_state_message(message)
         if not data:
             return
         
+        if self.is_first_message:
+            self.set_start_time(message)
+            self.is_first_message = False
+
         msg = self.format_recorder_state_message(data)
         
         try:
@@ -74,6 +80,9 @@ class MockupStatePublisher:
             self._l.debug(f"State message forwarded to recorder: {msg}")
         except Exception as e:
             self._l.error(f"Failed to forward state message to recorder: {e}")
+
+    def set_start_time(self, first_msg: dict):
+        self.start_time = time.time() - first_msg[RobotArmStateKeys.TIMESTAMP]
 
     def start_serving(self):
         self.rabbitmq.start_consuming()
