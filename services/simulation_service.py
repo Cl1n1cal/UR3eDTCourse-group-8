@@ -86,7 +86,7 @@ class SimulationService:
                     self.upload_state()
                     last_publish_time = curr_time
 
-                time.sleep(0.001)
+                time.sleep(0.001) 
 
         sim_thread = threading.Thread(target=_sim_loop, daemon=True)
         sim_thread.start()

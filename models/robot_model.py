@@ -132,4 +132,10 @@ class RobotModel:
     
     def set_move_traj(self):
         self.current_traj_index = 0
+        self.trajectory = rtb.jtraj(self.q_current, self.q_end, 400, qd0=self.qd_current) # calc.compute_steps_jtraj(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size)
+
+    """
+     def set_move_traj(self):
+        self.current_traj_index = 0
         self.trajectory = rtb.jtraj(self.q_current, self.q_end, calc.compute_steps(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size), qd0=self.qd_current)
+    """
