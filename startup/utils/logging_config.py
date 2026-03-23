@@ -33,7 +33,7 @@ def setup_root_logging(name = "global",level=logging.INFO):
 
     if not any(isinstance(h, logging.FileHandler) and h.baseFilename == str(root_logfile)
                for h in root_logger.handlers):
-        fh = logging.handlers.RotatingFileHandler(root_logfile, maxBytes=10*1024*1024, backupCount=5, encoding="utf-8")
+        fh = logging.handlers.RotatingFileHandler(root_logfile, maxBytes=10*1024*1024, encoding="utf-8")
         fh.setFormatter(fmt)
         root_logger.addHandler(fh)
 
@@ -50,7 +50,7 @@ def create_service_logger(service_name, level=logging.INFO):
     # avoid duplicate handler on repeated init
     if not any(isinstance(h, logging.FileHandler) and h.baseFilename == str(service_logfile)
                for h in logger.handlers):
-        h = logging.handlers.RotatingFileHandler(service_logfile, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8")
+        h = logging.handlers.RotatingFileHandler(service_logfile, maxBytes=5*1024*1024, encoding="utf-8")
         h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s",
                                          "%Y-%m-%d %H:%M:%S"))
         logger.addHandler(h)

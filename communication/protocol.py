@@ -65,3 +65,9 @@ def encode_json(object):
 
 def decode_json(bytes):
     return json.loads(bytes.decode(ENCODING))
+
+def unroll_list(key_prefix, values):
+    return {
+        f"{key_prefix}_{i}": v
+        for i, v in enumerate(values)
+    }

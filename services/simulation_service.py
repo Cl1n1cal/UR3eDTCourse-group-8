@@ -1,17 +1,17 @@
 import numpy as np
 import time
 from datetime import datetime, timezone
-import logging
 import math
 import threading
 from models.robot_model import RobotModel
 from communication.rabbitmq import Rabbitmq, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_CTRL, ROUTING_KEY_RECORDER, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys
 from communication.factory import RabbitMQFactory
+from communication.protocol import unroll_list
 from startup.utils.config import load_config_w_setuptools; c=load_config_w_setuptools('startup.conf');
 from startup.utils.logging_config import create_service_logger
 
 class SimulationService:
-    def __init__(self, start_time: float = 0.0):
+    def __init__(self, start_time: float = time.time()):
         self.step_size = c.get("digital_twin.robot_model.step_size", 0.01)
         self.publish_period = c.get("digital_twin.robot_model.publish_period", 0.05)
         
@@ -64,7 +64,9 @@ class SimulationService:
         self.robot_model.step(self.time)
     
     def setup(self):
-        self.robot_model.set_q_current(np.array(c.get("digital_twin.robot_model.initial_q", [0.0,0.0,0.0,0.0,0.0,0.0])))
+        self.robot_model.setup_initial_state(np.array(c.get("digital_twin.robot_model.initial_q", [0.0,0.0,0.0,0.0,0.0,0.0])), 
+                                             c.get("digital_twin.robot_model.max_velocity", 0.0),  
+                                             c.get("digital_twin.robot_model.acceleration", 0.0))
         self.publisher.connect_to_server()
         self.consumer.connect_to_server()
         self.consumer.subscribe(routing_key=ROUTING_KEY_CTRL,
@@ -102,8 +104,8 @@ class SimulationService:
 
         fields = {
             RobotArmStateKeys.ROBOT_MODE: self.robot_model.state,
-            RobotArmStateKeys.JOINT_MAX_SPEED: self.robot_model.max_velocity,
-            RobotArmStateKeys.JOINT_MAX_ACCELERATION: self.robot_model.max_acceleration,
+            RobotArmStateKeys.JOINT_MAX_SPEED: math.degrees(self.robot_model.max_velocity),
+            RobotArmStateKeys.JOINT_MAX_ACCELERATION: math.degrees(self.robot_model.max_acceleration),
         }
 
         fields.update(unroll_list(RobotArmStateKeys.Q_ACTUAL, self.robot_model.get_q_current().tolist()))
@@ -136,9 +138,3 @@ class SimulationService:
         }
 
         return mdata
-
-def unroll_list(key_prefix, values):
-    return {
-        f"{key_prefix}_{i}": v
-        for i, v in enumerate(values)
-    }

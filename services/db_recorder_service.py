@@ -4,6 +4,7 @@ from communication.protocol import ROUTING_KEY_RECORDER
 from communication.factory import RabbitMQFactory
 from startup.utils.logging_config import create_service_logger
 import threading
+import logging
 
 class DBRecorderService:
     def __init__(self):
@@ -11,7 +12,7 @@ class DBRecorderService:
         self.influx_db_org = None
         self.influxdb_bucket = None
         self.rabbitmq = None
-        self._l = create_service_logger("db_recorder_service")
+        self._l = create_service_logger("db_recorder_service", level=logging.DEBUG)
 
     def record_message(self, ch, method, properties, body_json):
         self._l.debug("New record msg:")

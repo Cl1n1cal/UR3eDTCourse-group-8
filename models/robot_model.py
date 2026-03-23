@@ -17,8 +17,8 @@ class RobotModel:
         self.max_velocity = 0.0
         self.max_acceleration = 0.0
 
-        self.phy_max_acceleration = 4*np.pi
-        self.phy_max_velocity = np.pi
+        self.phy_max_acceleration = 0.0
+        self.phy_max_velocity = 0.0
 
         self.state = RobotMode.ROBOT_MODE_IDLE
         self.step_size = step_size
@@ -55,8 +55,12 @@ class RobotModel:
 
         return robot
     
-    def set_q_current(self, q_current: np.ndarray):
-        self.q_current = q_current
+    def setup_initial_state(self, q_start: np.ndarray, max_joint_velocity: float, max_joint_acceleration: float) -> None:
+        self.q_current = q_start
+        self.max_velocity =  max_joint_velocity
+        self.max_acceleration = max_joint_acceleration
+        self.phy_max_velocity = max_joint_velocity
+        self.phy_max_acceleration = max_joint_acceleration
 
     def get_q_current(self) -> np.ndarray:
         return self.q_current
