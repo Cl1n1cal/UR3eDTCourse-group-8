@@ -1,8 +1,9 @@
 from services.mockup_state_publisher import MockupStatePublisher
+import time
 
 def start_mockup_state_publisher(ok_queue=None):
 
-    publisher = MockupStatePublisher()
+    publisher = MockupStatePublisher(time.time())
     publisher.setup()
 
     if ok_queue is not None:

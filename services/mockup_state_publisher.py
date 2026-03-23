@@ -7,8 +7,9 @@ import logging
 
 class MockupStatePublisher:
 
-    def __init__(self):
+    def __init__(self, start_time: float = 0.0):
         self.rabbitmq = RabbitMQFactory.create_rabbitmq()
+        self.start_time = start_time
         self._l = create_service_logger("mockup_state_publisher", level=logging.DEBUG)
     
     def setup(self):
@@ -37,7 +38,7 @@ class MockupStatePublisher:
         return message
     
     def format_recorder_state_message(self, data: dict) -> dict:
-        timestamp = datetime.fromtimestamp(data[RobotArmStateKeys.TIMESTAMP], timezone.utc).isoformat()
+        timestamp = datetime.fromtimestamp(data[RobotArmStateKeys.TIMESTAMP] + self.start_time, timezone.utc).isoformat()
         fields = {}
         fields[RobotArmStateKeys.ROBOT_MODE] = data[RobotArmStateKeys.ROBOT_MODE]
         fields[RobotArmStateKeys.JOINT_MAX_SPEED] = data[RobotArmStateKeys.JOINT_MAX_SPEED]
