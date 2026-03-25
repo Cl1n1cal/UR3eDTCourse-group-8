@@ -61,7 +61,7 @@ class SimulationService:
 
     def step_simulation(self):
         self.time += self.step_size
-        self.robot_model.step(self.time)
+        self.robot_model.step()
     
     def setup(self):
         self.robot_model.setup_initial_state(np.array(c.get("digital_twin.robot_model.initial_q", [0.0,0.0,0.0,0.0,0.0,0.0])), 
@@ -85,8 +85,6 @@ class SimulationService:
                 if curr_time - last_publish_time >= self.publish_period:
                     self.upload_state()
                     last_publish_time = curr_time
-
-                time.sleep(0.001)
 
         sim_thread = threading.Thread(target=_sim_loop, daemon=True)
         sim_thread.start()
