@@ -94,7 +94,7 @@ class MockupStatePublisher:
             curr_delay = curr_time - (self.start_time + message[RobotArmStateKeys.TIMESTAMP])
             if curr_delay - self.last_msg_delay > self.dead_mockup_threshold and self.last_msg_time:
                 self._l.warning("Delay difference past the threshold! Assuming mockup was dead and ajusting timestamps.")
-                self.dead_mockup_time += self.last_msg_time - curr_time
+                self.dead_mockup_time += curr_time - self.last_msg_time
             self.last_msg_delay = curr_delay
             self.last_msg_time = curr_time
 
