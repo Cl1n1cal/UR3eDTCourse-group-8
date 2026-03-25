@@ -4,9 +4,9 @@ from utils.configuration import load_config
 # Instantiate
 calibration_service = CalibrationService()
 config = load_config("startup/startup.conf")
-calibration_service.setup(influxdb_config=config["influxdb"])
+calibration_service.setup(calibration_config=config["calibration_service"])
 
 # Get estimated motion duration
-times, positions = calibration_service.get_motion_data()
-_, _, durr = calibration_service.get_motion_duration(times, positions)
-print(f"Estimated motion duration: {durr:.3f} s")
+data = calibration_service.get_mockup_joint_radians()
+print("data len:", len(data))
+print("Data [0]:", data[0])
