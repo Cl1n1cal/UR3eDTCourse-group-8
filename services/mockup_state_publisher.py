@@ -9,10 +9,10 @@ from startup.utils.config import load_config_w_setuptools; c=load_config_w_setup
 
 class MockupStatePublisher:
 
-    def __init__(self):
+    def __init__(self, dead_mockup_time_threshold):
         self.rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.start_time = 0.0
-        self.dead_mockup_threshold = c.get("mockup_state_publisher.dead_threshold", 0.5)
+        self.dead_mockup_threshold = dead_mockup_time_threshold
         self.dead_mockup_time = 0.0
         self.last_msg_time = None
         self.last_msg_delay = 0.0
