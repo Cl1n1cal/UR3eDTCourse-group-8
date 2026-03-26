@@ -3,7 +3,6 @@
 from multiprocessing import Process, get_context
 from multiprocessing.queues import Queue
 
-
 def start_as_daemon(component_starter_function, kwargs=None) -> Process:
     if kwargs is None:
         kwargs = {}

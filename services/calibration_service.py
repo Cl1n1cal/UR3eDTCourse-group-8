@@ -1,11 +1,12 @@
 from influxdb_client.client.influxdb_client import InfluxDBClient
 from startup.utils.logging_config import create_service_logger
 import logging
-import numpy as np
 import time
-from datetime import datetime, timezone
-import math
+import numpy as np
+import roboticstoolbox as rtb
 import threading
+from scipy.optimize import least_squares
+from spatialmath.base import tr2rpy
 
 class CalibrationService:
     def __init__(self):
@@ -13,6 +14,7 @@ class CalibrationService:
         self.influxdb_bucket = None
         self.rabbitmq = None
         self.time_interval = 0
+        self.robot = None
         self._l = create_service_logger("calibration_service", level=logging.DEBUG)
 
     def setup(self, calibration_config):
@@ -22,6 +24,7 @@ class CalibrationService:
         self.bucket = calibration_config["bucket"]
         self.org = calibration_config["org"]
         self.time_interval = calibration_config["time_interval"]
+        self.dh_guess = np.array(calibration_config["initial_guess"]["d"] + calibration_config["initial_guess"]["a"] + calibration_config["initial_guess"]["alpha"])
 
     def get_mockup_values(self):
         start = f"-{self.time_interval}s"
@@ -64,17 +67,57 @@ class CalibrationService:
                 data.append(entry)
 
         return data
-    
-
-    def do_some_logic(self, mockup_vals):
-        pass # TODO
 
     def start_serving(self):
-        def _calibration_loop():
-            while True:
-                time.sleep(self.time_interval)
-                mockup_vals = self.get_mockup_values()
-                self.do_some_logic(mockup_vals)
+        while True:
+            time.sleep(self.time_interval)
+            self._l.info(f"Woke up! Time to calibrate DH Parameters. Initial guess: {self.dh_guess}")
+            self.dh_guess = self.estimate_dh_parameters()
+            self._l.debug(f"New DH Parameters {self.dh_guess}")
 
-        calibration_thread = threading.Thread(target=_calibration_loop, daemon=True)
-        calibration_thread.start()
+    def estimate_dh_parameters(self):
+        #get historical position and tcp pose values from db
+        data = self.get_mockup_values()
+
+        def cost(dh_guess):
+            #create robot from parameters
+            d1, d2, d3, d4, d5, d6, a1, a2, a3, a4, a5, a6, alpha1, alpha2, alpha3, alpha4, alpha5, alpha6 = dh_guess
+            d = [d1, d2, d3, d4, d5, d6]
+            a = [a1, a2, a3, a4, a5, a6]
+            alpha = [alpha1, alpha2, alpha3, alpha4, alpha5, alpha6]
+            try:
+                robot = create_robot(d, a, alpha)
+            except Exception as e:
+                self._l.warning(f"Failed to build robot, error: {e}")
+                raise e
+
+            cost = 0.0
+
+            for sample in data:
+                #compute tcp pose given input positions
+                q_actual = [sample['q_actual_0'], sample['q_actual_1'], sample['q_actual_2'], sample['q_actual_3'], sample['q_actual_4'], sample['q_actual_5']]
+                model_tcp = robot.fkine(np.array(q_actual))
+                model_tcp = np.concatenate((model_tcp.t, tr2rpy(model_tcp.R)))
+                #get cost by summing square of errors
+                sample_tcp = np.array([sample['tcp_pose_0'], sample['tcp_pose_1'], sample['tcp_pose_2'], sample['tcp_pose_3'], sample['tcp_pose_4'], sample['tcp_pose_5']])
+                residuals = sample_tcp - model_tcp
+                cost += residuals**2
+
+            return cost
+        
+        try:
+            res = least_squares(cost, self.dh_guess)
+        except:
+            return
+
+        return res.x
+
+def create_robot(d: list, a: list, alpha: list):
+    links = []
+    for j in range(6):
+        link = rtb.RevoluteDH(d=d[j], a=a[j], alpha=alpha[j])
+        links.append(link)
+    
+    # 6 link robot
+    return rtb.DHRobot([links[0], links[1], links[2], links[3], links[4], links[5]])
+    

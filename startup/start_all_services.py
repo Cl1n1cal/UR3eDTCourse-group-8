@@ -5,6 +5,7 @@ from startup.start_ur3e_mockup import start_robot_arm_mockup
 from startup.start_db_recorder_service import start_db_recorder_service
 from startup.start_mockup_state_publisher import start_mockup_state_publisher
 from startup.start_docker_influxdb import start_docker_influxdb
+from startup.start_calibration_service import start_calibration_service
 from startup.utils.logging_config import setup_root_logging
 
 if __name__ == "__main__":
@@ -15,3 +16,4 @@ if __name__ == "__main__":
     start_as_daemon(start_db_recorder_service)
     start_as_daemon(start_mockup_state_publisher)
     start_as_daemon(start_sim_service)
+    start_as_daemon(start_calibration_service)
