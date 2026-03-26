@@ -2,6 +2,10 @@ from influxdb_client.client.influxdb_client import InfluxDBClient
 from startup.utils.logging_config import create_service_logger
 import logging
 import numpy as np
+import time
+from datetime import datetime, timezone
+import math
+import threading
 
 class CalibrationService:
     def __init__(self):
@@ -19,7 +23,8 @@ class CalibrationService:
         self.org = calibration_config["org"]
         self.time_interval = calibration_config["time_interval"]
 
-    def get_mockup_joint_radians(self, start="-100s"):
+    def get_mockup_values(self):
+        start = f"-{self.time_interval}s"
         query = f'''
         from(bucket: "{self.bucket}")
         |> range(start: {start})
@@ -30,7 +35,13 @@ class CalibrationService:
             "q_actual_2",
             "q_actual_3",
             "q_actual_4",
-            "q_actual_5"
+            "q_actual_5",
+            "tcp_pose_0",
+            "tcp_pose_1",
+            "tcp_pose_2",
+            "tcp_pose_3",
+            "tcp_pose_4",
+            "tcp_pose_5",
         ]))
         |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"])
@@ -41,19 +52,29 @@ class CalibrationService:
 
         data = []
         fields = [f"q_actual_{i}" for i in range(6)]
+        fields1 = [f"tcp_pose_{i}" for i in range(6)]
 
         for table in tables:
             for record in table.records:
                 entry = {
                     "time_stamp": record.get_time().isoformat(),
-                    **{field: record.values.get(field) for field in fields}
+                    **{field: record.values.get(field) for field in fields},
+                    **{field: record.values.get(field) for field in fields1}
                 }
                 data.append(entry)
 
         return data
     
-    def get_mockup_tcp_pose(self):
-        pass
+
+    def do_some_logic(self, mockup_vals):
+        pass # TODO
 
     def start_serving(self):
-        pass
+        def _calibration_loop():
+            while True:
+                time.sleep(self.time_interval)
+                mockup_vals = self.get_mockup_values()
+                self.do_some_logic(mockup_vals)
+
+        calibration_thread = threading.Thread(target=_calibration_loop, daemon=True)
+        calibration_thread.start()
