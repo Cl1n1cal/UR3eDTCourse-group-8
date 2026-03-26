@@ -2,6 +2,7 @@ import numpy as np
 from spatialmath import SE3
 import json
 from communication.protocol import RobotArmStateKeys
+from spatialmath.base import tr2rpy
 
 def compute_time(q_start, q_end, v_max_deg, a_max_deg, dt):
     """
@@ -103,3 +104,6 @@ def compute_stop_q_end(q_start, v_current, a_max):
     q_end = q_start + stop_dist * np.sign(v_current)
 
     return q_end
+
+def se3_to_pos_rpy(se3: SE3):
+    return np.concatenate((se3.t, tr2rpy(se3.R)))

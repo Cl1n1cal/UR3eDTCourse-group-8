@@ -4,6 +4,7 @@ import utils.calculation_functions as calc
 import communication.protocol as protocol
 from communication.protocol import RobotMode
 import spatialmath as spm
+from utils.calculation_functions import se3_to_pos_rpy
 
 class RobotModel:
     def __init__(self, step_size: float = 0.01):
@@ -61,6 +62,7 @@ class RobotModel:
         self.max_acceleration = max_joint_acceleration
         self.phy_max_velocity = max_joint_velocity
         self.phy_max_acceleration = max_joint_acceleration
+        self.tcp_pose = self.robot.fkine(self.q_current)
 
     def get_q_current(self) -> np.ndarray:
         return self.q_current
@@ -96,7 +98,6 @@ class RobotModel:
             self.qd_current = traj_qd[self.current_traj_index]
             self.qdd_current = traj_qdd[self.current_traj_index]
             self.tcp_pose = self.robot.fkine(self.q_current) # Calculate the current tcp pose using current joint positions
-        
             self.current_traj_index += 1
         else:
             if self.state == RobotMode.ROBOT_MODE_RUNNING:

@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timezone
 import math
 import threading
+from utils.calculation_functions import se3_to_pos_rpy
 from models.robot_model import RobotModel
 from communication.rabbitmq import Rabbitmq, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_CTRL, ROUTING_KEY_RECORDER, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys
 from communication.factory import RabbitMQFactory
@@ -111,7 +112,7 @@ class SimulationService:
         fields.update(unroll_list(RobotArmStateKeys.Q_ACTUAL, self.robot_model.get_q_current().tolist()))
         fields.update(unroll_list(RobotArmStateKeys.QD_ACTUAL, self.robot_model.get_qd_current().tolist()))
         fields.update(unroll_list(RobotArmStateKeys.Q_TARGET, self.robot_model.get_q_end().tolist()))
-        fields.update(unroll_list(RobotArmStateKeys.TCP_POSE, self.robot_model.get_tcp_pose_current().t.tolist()))
+        fields.update(unroll_list(RobotArmStateKeys.TCP_POSE, se3_to_pos_rpy(self.robot_model.get_tcp_pose_current()).tolist()))
 
         rdata = {
             "measurement": "simulation_state",
@@ -134,7 +135,7 @@ class SimulationService:
             RobotArmStateKeys.TIMESTAMP: timestamp,
             RobotArmStateKeys.JOINT_MAX_SPEED: self.robot_model.max_velocity,
             RobotArmStateKeys.JOINT_MAX_ACCELERATION: self.robot_model.max_acceleration,
-            RobotArmStateKeys.TCP_POSE: self.robot_model.get_tcp_pose_current().t.tolist()
+            RobotArmStateKeys.TCP_POSE: se3_to_pos_rpy(self.robot_model.get_tcp_pose_current()).tolist()
         }
 
         return mdata
