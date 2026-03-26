@@ -4,17 +4,15 @@ from datetime import datetime, timezone
 import math
 import threading
 from models.robot_model import RobotModel
-from communication.rabbitmq import Rabbitmq, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_CTRL, ROUTING_KEY_RECORDER, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys
+from communication.rabbitmq import Rabbitmq, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_CTRL, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys
 from communication.factory import RabbitMQFactory
 from communication.protocol import unroll_list
-from startup.utils.config import load_config_w_setuptools; c=load_config_w_setuptools('startup.conf');
 from startup.utils.logging_config import create_service_logger
 
 class SimulationService:
-    def __init__(self, start_time: float = time.time()):
-        self.step_size = c.get("digital_twin.robot_model.step_size", 0.01)
-        self.publish_period = c.get("digital_twin.robot_model.publish_period", 0.05)
-        
+    def __init__(self, step_size: float = 0.01, publish_period: float = 0.05, start_time: float = time.time()):
+        self.step_size = step_size
+        self.publish_period = publish_period
         self.robot_model = RobotModel(step_size=self.step_size)
         self.consumer: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.publisher: Rabbitmq = RabbitMQFactory.create_rabbitmq()
@@ -61,12 +59,11 @@ class SimulationService:
 
     def step_simulation(self):
         self.time += self.step_size
-        self.robot_model.step(self.time)
+        self.robot_model.step()
     
-    def setup(self):
-        self.robot_model.setup_initial_state(np.array(c.get("digital_twin.robot_model.initial_q", [0.0,0.0,0.0,0.0,0.0,0.0])), 
-                                             c.get("digital_twin.robot_model.max_velocity", 0.0),  
-                                             c.get("digital_twin.robot_model.acceleration", 0.0))
+    def setup(self, initial_q = [0.0,0.0,0.0,0.0,0.0,0.0], max_velocity = 0, max_acceleration = 0):
+        self._l.info("Setting up simulation service.")
+        self.robot_model.setup_initial_state(np.array(initial_q), max_velocity, max_acceleration)
         self.publisher.connect_to_server()
         self.consumer.connect_to_server()
         self.consumer.subscribe(routing_key=ROUTING_KEY_CTRL,
@@ -85,8 +82,6 @@ class SimulationService:
                 if curr_time - last_publish_time >= self.publish_period:
                     self.upload_state()
                     last_publish_time = curr_time
-
-                time.sleep(0.001)
 
         sim_thread = threading.Thread(target=_sim_loop, daemon=True)
         sim_thread.start()

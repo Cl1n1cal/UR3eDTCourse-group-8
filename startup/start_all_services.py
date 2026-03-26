@@ -11,7 +11,7 @@ if __name__ == "__main__":
     setup_root_logging("all_service_logs")
     start_docker_rabbitmq()
     start_docker_influxdb()
-    start_as_daemon(start_robot_arm_mockup)
     start_as_daemon(start_db_recorder_service)
     start_as_daemon(start_mockup_state_publisher)
+    start_as_daemon(start_robot_arm_mockup)
     start_as_daemon(start_sim_service)
