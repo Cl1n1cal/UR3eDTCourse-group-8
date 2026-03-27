@@ -16,7 +16,7 @@ class SimulationService:
         self.step_size = c.get("digital_twin.robot_model.step_size", 0.01)
         self.publish_period = c.get("digital_twin.robot_model.publish_period", 0.05)
         
-        self.robot_model = RobotModel(step_size=self.step_size)
+        self.robot_model = RobotModel(step_size=self.step_size,d = c.get("digital_twin.robot_model.dh_parameters.d"), a = c.get("digital_twin.robot_model.dh_parameters.a"), alpha = c.get("digital_twin.robot_model.dh_parameters.alpha"))
         self.consumer: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.publisher: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.time = start_time

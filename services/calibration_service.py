@@ -3,8 +3,7 @@ from startup.utils.logging_config import create_service_logger
 import logging
 import time
 import numpy as np
-import roboticstoolbox as rtb
-import threading
+from models.robot_model import create_robot
 from scipy.optimize import least_squares
 from spatialmath.base import tr2rpy
 
@@ -112,12 +111,3 @@ class CalibrationService:
 
         return res.x
 
-def create_robot(d: list, a: list, alpha: list):
-    links = []
-    for j in range(6):
-        link = rtb.RevoluteDH(d=d[j], a=a[j], alpha=alpha[j])
-        links.append(link)
-    
-    # 6 link robot
-    return rtb.DHRobot([links[0], links[1], links[2], links[3], links[4], links[5]])
-    

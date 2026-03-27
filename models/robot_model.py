@@ -4,10 +4,9 @@ import utils.calculation_functions as calc
 import communication.protocol as protocol
 from communication.protocol import RobotMode
 import spatialmath as spm
-from utils.calculation_functions import se3_to_pos_rpy
 
 class RobotModel:
-    def __init__(self, step_size: float = 0.01):
+    def __init__(self, step_size: float = 0.01, d = [0.0], a = [0.0], alpha = [0.0]):
         self.q_current = np.zeros(6) 
         self.qd_current = np.zeros(6)
         self.qdd_current = np.zeros(6)
@@ -24,37 +23,7 @@ class RobotModel:
         self.state = RobotMode.ROBOT_MODE_IDLE
         self.step_size = step_size
         self.current_traj_index = 0
-        self.robot: rtb.DHRobot = self.create_robot()
-
-    def create_robot(self):
-        # Code from the UR3 class in roboticstoolbox
-        # robot length values (metres)
-        a = [0, -0.24365, -0.21325, 0, 0, 0]
-        d = [0.1519, 0, 0, 0.11235, 0.08535, 0.0819]
-
-        alpha = [np.pi / 2, 0.0, 0.0, np.pi / 2, -np.pi / 2, 0.0]
-
-        # mass data, no inertia available
-        mass = [2, 3.42, 1.26, 0.8, 0.8, 0.35]
-        center_of_mass = [
-            [0, -0.02, 0],
-            [0.13, 0, 0.1157],
-            [0.05, 0, 0.0238],
-            [0, 0, 0.01],
-            [0, 0, 0.01],
-            [0, 0, -0.02],
-        ]
-        links = []
-        for j in range(6):
-            link = rtb.RevoluteDH(
-                d=d[j], a=a[j], alpha=alpha[j], m=mass[j], r=center_of_mass[j], G=1
-            )
-            links.append(link)
-        
-        # 6 link robot
-        robot = rtb.DHRobot([links[0], links[1], links[2], links[3], links[4], links[5]], name="UR3e-robot")
-
-        return robot
+        self.robot: rtb.DHRobot = create_robot(d, a, alpha)
     
     def setup_initial_state(self, q_start: np.ndarray, max_joint_velocity: float, max_joint_acceleration: float) -> None:
         self.q_current = q_start
@@ -133,10 +102,15 @@ class RobotModel:
     
     def set_move_traj(self):
         self.current_traj_index = 0
-        self.trajectory = rtb.jtraj(self.q_current, self.q_end, 400, qd0=self.qd_current) # calc.compute_steps_jtraj(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size)
-
-    """
-     def set_move_traj(self):
-        self.current_traj_index = 0
         self.trajectory = rtb.jtraj(self.q_current, self.q_end, calc.compute_steps(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size), qd0=self.qd_current)
-    """
+
+@staticmethod
+def create_robot(d: list, a: list, alpha: list):
+    links = []
+    for j in range(6):
+        link = rtb.RevoluteDH(d=d[j], a=a[j], alpha=alpha[j])
+        links.append(link)
+    
+    # 6 link robot
+    return rtb.DHRobot([links[0], links[1], links[2], links[3], links[4], links[5]])
+    

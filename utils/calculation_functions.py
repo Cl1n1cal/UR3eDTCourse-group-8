@@ -1,7 +1,5 @@
 import numpy as np
 from spatialmath import SE3
-import json
-from communication.protocol import RobotArmStateKeys
 from spatialmath.base import tr2rpy
 
 def compute_time(q_start, q_end, v_max_deg, a_max_deg, dt):
