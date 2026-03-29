@@ -1,7 +1,6 @@
 import numpy as np
 import roboticstoolbox as rtb
 import utils.calculation_functions as calc
-import communication.protocol as protocol
 from communication.protocol import RobotMode
 import spatialmath as spm
 
@@ -103,6 +102,12 @@ class RobotModel:
     def set_move_traj(self):
         self.current_traj_index = 0
         self.trajectory = rtb.jtraj(self.q_current, self.q_end, calc.compute_steps(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size), qd0=self.qd_current)
+
+    def update_dh_parameters(self, d: list, a: list, alpha: list):
+        print("updating params")
+        for i in range(6):
+            self.robot.links[i] = rtb.RevoluteDH(d=d[i], a=a[i], alpha=alpha[i])
+        self.tcp_pose = self.robot.fkine(self.q_current)
 
 @staticmethod
 def create_robot(d: list, a: list, alpha: list):

@@ -5,9 +5,9 @@ import math
 import threading
 from utils.calculation_functions import se3_to_pos_rpy
 from models.robot_model import RobotModel
-from communication.rabbitmq import Rabbitmq, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_CTRL, ROUTING_KEY_RECORDER, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys
+from communication.rabbitmq import Rabbitmq
 from communication.factory import RabbitMQFactory
-from communication.protocol import unroll_list
+from communication.protocol import unroll_list, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_CTRL, ROUTING_KEY_CALIBRATION, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys
 from startup.utils.config import load_config_w_setuptools; c=load_config_w_setuptools('startup.conf');
 from startup.utils.logging_config import create_service_logger
 
@@ -60,6 +60,10 @@ class SimulationService:
             case _:
                 self._l.warning(f"Unknown control message type: {msg_type}")
 
+    def read_calibration_message(self, ch, method, properties, message: dict):
+        self._l.info(f"Received calibration message, updating model's DH parameters: {message}")
+        self.robot_model.update_dh_parameters(d = message['d'], a =message['a'], alpha = message['alpha'])
+
     def step_simulation(self):
         self.time += self.step_size
         self.robot_model.step(self.time)
@@ -72,6 +76,8 @@ class SimulationService:
         self.consumer.connect_to_server()
         self.consumer.subscribe(routing_key=ROUTING_KEY_CTRL,
                                 on_message_callback=self.read_control_message)
+        self.consumer.subscribe(routing_key=ROUTING_KEY_CALIBRATION,
+                                on_message_callback=self.read_calibration_message)
     
     def start_serving(self):
         stop_event = threading.Event()

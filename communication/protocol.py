@@ -7,6 +7,7 @@ ROUTING_KEY_STATE = "robotarm.pt.state"
 ROUTING_KEY_MODEL_STATE = "robotarm.model.state"
 ROUTING_KEY_CTRL = "robotarm.ctrl"
 ROUTING_KEY_RECORDER = "robotarm.recorder.#"
+ROUTING_KEY_CALIBRATION = "robotarm.model.calibration"
 
 ### MESSAGES
 class CtrlMsgFields:
