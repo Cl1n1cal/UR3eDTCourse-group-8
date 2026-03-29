@@ -15,6 +15,8 @@ class CalibrationService:
         self.rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.time_interval = 0
         self.robot = None
+        self.max_pos_error = 0.01 # 1cm
+        self.max_rot_error = 0.017 # ~1 degree in radians
         self._l = create_service_logger("calibration_service", level=logging.DEBUG)
 
     def setup(self, calibration_config):
@@ -25,6 +27,8 @@ class CalibrationService:
         self.bucket = calibration_config["bucket"]
         self.org = calibration_config["org"]
         self.time_interval = calibration_config["time_interval"]
+        self.max_pos_error = calibration_config["max_position_error"]
+        self.max_rot_error = calibration_config["max_rotation_error"]
         self.dh_guess = np.array(calibration_config["initial_guess"]["d"] + calibration_config["initial_guess"]["a"] + calibration_config["initial_guess"]["alpha"])
 
     def get_mockup_values(self):
@@ -102,20 +106,31 @@ class CalibrationService:
             try:
                 robot = create_robot(d, a, alpha)
             except Exception as e:
-                self._l.warning(f"Failed to create robot with DH parameters: {e}")
-                return
+                raise e
 
             cost = 0.0
 
             for sample in data:
-                #compute tcp pose given input positions
-                q_actual = np.array([sample['q_actual_0'], sample['q_actual_1'], sample['q_actual_2'], sample['q_actual_3'], sample['q_actual_4'], sample['q_actual_5']])
+                # Skip samples with missing data
+                q_fields = [f'q_actual_{i}' for i in range(6)]
+                tcp_fields = [f'tcp_pose_{i}' for i in range(6)]
+                if any(sample.get(field) is None for field in q_fields + tcp_fields):
+                    continue
+                
+                # Extract joint positions and TCP pose
+                q_actual = np.array([sample[f'q_actual_{i}'] for i in range(6)])
+                sample_tcp = np.array([sample[f'tcp_pose_{i}'] for i in range(6)])
+                
+                # Compute model TCP pose
                 model_tcp = se3_to_pos_rpy(robot.fkine(q_actual))
-                #get cost by summing square of errors
-                sample_tcp = np.array([sample['tcp_pose_0'], sample['tcp_pose_1'], sample['tcp_pose_2'], sample['tcp_pose_3'], sample['tcp_pose_4'], sample['tcp_pose_5']])
-                #todo: change this to evaluate diference in a nomalized way, so positions over max dislocation and rotations over max rotations
-                residuals = sample_tcp - model_tcp
-                cost += residuals**2
+                
+                # Compute normalized residuals (positions: 0.01m, rotations: 0.017rad ≈1°)
+                pos_res = (sample_tcp[:3] - model_tcp[:3]) / self.max_pos_error
+                rot_res = (sample_tcp[3:] - model_tcp[3:]) / self.max_rot_error
+                residuals = np.concatenate([pos_res, rot_res])
+                
+                # Add to cost
+                cost += np.sum(residuals**2)
 
             return cost
         

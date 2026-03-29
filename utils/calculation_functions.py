@@ -104,4 +104,6 @@ def compute_stop_q_end(q_start, v_current, a_max):
     return q_end
 
 def se3_to_pos_rpy(se3: SE3):
-    return np.concatenate((se3.t, tr2rpy(se3.R)))
+    tcp_rpy = se3.rpy(order='xyz')
+    tcp_xyz = se3.t
+    return np.hstack((tcp_xyz, tcp_rpy))
