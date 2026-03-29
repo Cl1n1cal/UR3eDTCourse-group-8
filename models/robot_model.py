@@ -47,7 +47,7 @@ class RobotModel:
     def get_tcp_pose_current(self) -> spm.SE3:
         return self.tcp_pose
 
-    def step(self, current_time: float):
+    def step(self):
 
         if self.trajectory is None:
             return

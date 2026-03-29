@@ -101,7 +101,8 @@ class CalibrationService:
             alpha = [alpha1, alpha2, alpha3, alpha4, alpha5, alpha6]
             try:
                 robot = create_robot(d, a, alpha)
-            except:
+            except Exception as e:
+                self._l.warning(f"Failed to create robot with DH parameters: {e}")
                 return
 
             cost = 0.0

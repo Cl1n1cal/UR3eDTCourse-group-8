@@ -2,7 +2,7 @@ import logging
 import logging.handlers
 import os
 
-LOG_DIR_PATH = os.path.join(os.path.dirname(__file__), "../logs/")
+LOG_DIR_PATH = os.path.join(os.path.dirname(__file__), "../../logs/")
 
 #deprecated
 def config_logging(filename=None, level=logging.WARN):
@@ -33,7 +33,7 @@ def setup_root_logging(name = "global",level=logging.INFO):
 
     if not any(isinstance(h, logging.FileHandler) and h.baseFilename == str(root_logfile)
                for h in root_logger.handlers):
-        fh = logging.handlers.RotatingFileHandler(root_logfile, maxBytes=10*1024*1024, encoding="utf-8")
+        fh = logging.handlers.RotatingFileHandler(root_logfile, maxBytes=10*1024*1024 ,encoding="utf-8")
         fh.setFormatter(fmt)
         root_logger.addHandler(fh)
 
@@ -46,7 +46,6 @@ def create_service_logger(service_name, level=logging.INFO):
     service_logfile = LOG_DIR_PATH + service_name + ".log"
     logger = logging.getLogger(service_name)   # child logger
     logger.setLevel(level)
-
     # avoid duplicate handler on repeated init
     if not any(isinstance(h, logging.FileHandler) and h.baseFilename == str(service_logfile)
                for h in logger.handlers):

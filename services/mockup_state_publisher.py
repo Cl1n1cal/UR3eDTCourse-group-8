@@ -5,12 +5,17 @@ from communication.protocol import unroll_list
 from datetime import datetime, timezone
 import time
 import logging
+from startup.utils.config import load_config_w_setuptools; c=load_config_w_setuptools('startup.conf');
 
 class MockupStatePublisher:
 
-    def __init__(self):
+    def __init__(self, dead_mockup_time_threshold):
         self.rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.start_time = 0.0
+        self.dead_mockup_threshold = dead_mockup_time_threshold
+        self.dead_mockup_time = 0.0
+        self.last_msg_time = None
+        self.last_msg_delay = 0.0
         self._l = create_service_logger("mockup_state_publisher", level=logging.DEBUG)
         self.is_first_message = True
     
@@ -40,7 +45,8 @@ class MockupStatePublisher:
         return message
     
     def format_recorder_state_message(self, data: dict) -> dict:
-        timestamp = datetime.fromtimestamp(data[RobotArmStateKeys.TIMESTAMP] + self.start_time, timezone.utc).isoformat()
+        time = self.start_time + data[RobotArmStateKeys.TIMESTAMP] + self.dead_mockup_time
+        timestamp = datetime.fromtimestamp(time, timezone.utc).isoformat()
         fields = {}
         fields[RobotArmStateKeys.ROBOT_MODE] = data[RobotArmStateKeys.ROBOT_MODE]
         fields[RobotArmStateKeys.JOINT_MAX_SPEED] = data[RobotArmStateKeys.JOINT_MAX_SPEED]
@@ -73,6 +79,8 @@ class MockupStatePublisher:
             self.set_start_time(message)
             self.is_first_message = False
 
+        self.check_for_dead_mockup(message)
+
         msg = self.format_recorder_state_message(data)
         
         try:
@@ -80,6 +88,15 @@ class MockupStatePublisher:
             self._l.debug(f"State message forwarded to recorder: {msg}")
         except Exception as e:
             self._l.error(f"Failed to forward state message to recorder: {e}")
+
+    def check_for_dead_mockup(self, message):
+            curr_time = time.time()
+            curr_delay = curr_time - (self.start_time + message[RobotArmStateKeys.TIMESTAMP])
+            if curr_delay - self.last_msg_delay > self.dead_mockup_threshold and self.last_msg_time:
+                self._l.warning("Delay difference past the threshold! Assuming mockup was dead and ajusting timestamps.")
+                self.dead_mockup_time += curr_time - self.last_msg_time
+            self.last_msg_delay = curr_delay
+            self.last_msg_time = curr_time
 
     def set_start_time(self, first_msg: dict):
         self.start_time = time.time() - first_msg[RobotArmStateKeys.TIMESTAMP]
