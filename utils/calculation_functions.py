@@ -1,20 +1,12 @@
 import numpy as np
 from spatialmath import SE3
-from spatialmath.base import tr2rpy
 
-def compute_time(q_start, q_end, v_max_deg, a_max_deg, dt):
+def compute_time(q_start: np.ndarray, q_end: np.ndarray, v_max: float, a_max: float, dt: float):
     """
     Positions: radians
-    Velocity: deg/s
-    Acceleration: deg/s^2
+    Velocity: rad/s
+    Acceleration: rad/s^2
     """
-
-    q_start = np.array(q_start)
-    q_end   = np.array(q_end)
-
-    # Convert velocity and acceleration to radians
-    v_max = np.deg2rad(v_max_deg)
-    a_max = np.deg2rad(a_max_deg)
 
     T_all = []
 
@@ -43,8 +35,8 @@ def compute_time(q_start, q_end, v_max_deg, a_max_deg, dt):
 def compute_steps(q_start: np.ndarray, q_end: np.ndarray, v_max: float, a_max: float, dt: float):
     """
     Positions: radians
-    Velocity: deg/s
-    Acceleration: deg/s^2
+    Velocity: rad/s
+    Acceleration: rad/s^2
     """
 
     T_all = []

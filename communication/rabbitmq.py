@@ -123,5 +123,8 @@ class Rabbitmq:
         return created_queue_name
 
     def start_consuming(self):
-        self.channel.start_consuming()
+        try:
+            self.channel.start_consuming()
+        except KeyboardInterrupt:
+            pass  # Exit cleanly on interrupt
 
