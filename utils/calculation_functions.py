@@ -11,7 +11,7 @@ def compute_time(q_start: np.ndarray, q_end: np.ndarray, v_max: float, a_max: fl
     T_all = []
 
     for i in range(len(q_start)):
-        delta_q = abs(q_end[i] - q_start[i])  # already radians
+        delta_q = abs(q_end[i] - q_start[i])
 
         t_acc = v_max / a_max
         q_acc = dt * a_max * t_acc**2

@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 import time
 from datetime import datetime, timezone
@@ -19,7 +20,7 @@ class SimulationService:
         self.publisher: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.time = start_time
         
-        self._l = create_service_logger("simulation_service")
+        self._l = create_service_logger("simulation_service", level=logging.INFO)
     
     def cleanup(self):
         self.consumer.close()
@@ -30,7 +31,7 @@ class SimulationService:
 
         rdata = self.create_recorder_state_msg()
         mdata = self.create_state_msg()
-        
+
         self.publisher.send_message("robotarm.recorder.arm_state", rdata)
         self.publisher.send_message(ROUTING_KEY_MODEL_STATE, mdata)
         
@@ -45,9 +46,9 @@ class SimulationService:
         
         match msg_type:
             case CtrlMsgFields.LOAD_PROGRAM:
-                q_end = np.array(message.get(CtrlMsgKeys.JOINT_POSITIONS, [[0, 0, 0, 0, 0, 0]])[0]) # Default to 6 zeros if not provided
-                max_velocity = math.radians(message.get(CtrlMsgKeys.MAX_VELOCITY, 0))
-                acceleration = math.radians(message.get(CtrlMsgKeys.ACCELERATION, 0))
+                q_end = np.array(message.get(CtrlMsgKeys.JOINT_POSITIONS, [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])[0], dtype=float)
+                max_velocity = math.radians(message.get(CtrlMsgKeys.MAX_VELOCITY, 0.0))
+                acceleration = math.radians(message.get(CtrlMsgKeys.ACCELERATION, 0.0))
                 self.load_program(q_end, max_velocity, acceleration)
             case CtrlMsgFields.PLAY:
                 self.robot_model.play()

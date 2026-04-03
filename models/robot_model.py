@@ -5,6 +5,7 @@ import roboticstoolbox as rtb
 import utils.calculation_functions as calc
 from communication.protocol import RobotMode
 import spatialmath as spm
+import matplotlib.pyplot as plt
 
 class RobotModel:
     def __init__(self, step_size: float = 0.01, d = [0.0], a = [0.0], alpha = [0.0]):
@@ -39,10 +40,10 @@ class RobotModel:
         return self.q_current
     
     def get_qd_current(self) -> np.ndarray:
-        return self.qd_current
+        return self.qd_current * 100
     
     def get_qdd_current(self) -> np.ndarray:
-        return self.qdd_current
+        return self.qdd_current * 100
     
     def get_q_end(self) -> np.ndarray:
         return self.q_end
@@ -58,14 +59,22 @@ class RobotModel:
                 self.iterate_trajectory()
                 
     def iterate_trajectory(self):
-        if self.trajectory is None or self.trajectory.q is None or self.trajectory.qd is None or self.trajectory.qdd is None:
-            print("No trajectory to follow. Or trajectory is missing q, qd or qdd.")
+        if self.trajectory is None:
+            print("No trajectory to follow.")
             return
-                
+        
+        traj_q = getattr(self.trajectory, "q", None)
+        traj_qd = getattr(self.trajectory, "qd", None)
+        traj_qdd = getattr(self.trajectory, "qdd", None)
+
+        if traj_q is None or traj_qd is None or traj_qdd is None:
+            print("Trajectory does not have expected fields.")
+            return
+
         if self.current_traj_index < len(self.trajectory.q):
-            self.q_current = self.trajectory.q[self.current_traj_index]
-            self.qd_current = self.trajectory.qd[self.current_traj_index]
-            self.qdd_current = self.trajectory.qdd[self.current_traj_index]
+            self.q_current = traj_q[self.current_traj_index]
+            self.qd_current = traj_qd[self.current_traj_index]
+            self.qdd_current = traj_qdd[self.current_traj_index]
             self.tcp_pose = self.robot.fkine(self.q_current)
             self.current_traj_index += 1
         else:
@@ -102,10 +111,10 @@ class RobotModel:
     
     def set_move_traj(self):
         self.current_traj_index = 0
-        self.trajectory = rtb.mtraj(rtb.trapezoidal, self.q_current, self.q_end, calc.compute_time(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size))
+        self.trajectory = rtb.mtraj(rtb.trapezoidal, self.q_current, self.q_end, calc.compute_steps(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size)) 
 
     def update_dh_parameters(self, d: list, a: list, alpha: list):
-        print("updating params")
+        print("Updating params")
         for i in range(6):
             self.robot.links[i] = rtb.RevoluteDH(d=d[i], a=a[i], alpha=alpha[i])
         self.tcp_pose = self.robot.fkine(self.q_current)
