@@ -40,10 +40,10 @@ class RobotModel:
         return self.q_current
     
     def get_qd_current(self) -> np.ndarray:
-        return self.qd_current * 100
+        return self.qd_current / self.step_size
     
     def get_qdd_current(self) -> np.ndarray:
-        return self.qdd_current * 100
+        return self.qdd_current / self.step_size**2
     
     def get_q_end(self) -> np.ndarray:
         return self.q_end
