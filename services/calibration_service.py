@@ -17,7 +17,7 @@ class CalibrationService:
         self.robot = None
         self.max_pos_error = 0.01 # 1cm
         self.max_rot_error = 0.017 # ~1 degree in radians
-        self._l = create_service_logger("calibration_service", level=logging.DEBUG)
+        self._l = create_service_logger("calibration_service")
 
     def setup(self, calibration_config):
         self._l.info("Calibration service setup with config ", calibration_config)

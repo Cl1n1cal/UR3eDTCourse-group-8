@@ -20,7 +20,7 @@ class SimulationService:
         self.publisher: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.time = start_time
         
-        self._l = create_service_logger("simulation_service", level=logging.INFO)
+        self._l = create_service_logger("simulation_service")
     
     def cleanup(self):
         self.consumer.close()

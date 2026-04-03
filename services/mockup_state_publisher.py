@@ -16,7 +16,7 @@ class MockupStatePublisher:
         self.dead_mockup_time = 0.0
         self.last_msg_time = None
         self.last_msg_delay = 0.0
-        self._l = create_service_logger("mockup_state_publisher", level=logging.INFO)
+        self._l = create_service_logger("mockup_state_publisher")
         self.is_first_message = True
     
     def setup(self):
