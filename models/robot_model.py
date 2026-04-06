@@ -112,19 +112,21 @@ class RobotModel:
     
     def set_move_traj(self):
         self.current_traj_index = 0
-        self.trajectory = self.jointwise_trapezoidal_trajectory(self.q_current, self.q_end, calc.compute_steps(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size))
+        steps = calc.compute_steps(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size)
+        self.trajectory = self.jointwise_trapezoidal_trajectory()
     
-    def jointwise_trapezoidal_trajectory(self, q_start, q_end, steps):
-        n_joints = len(q_start)
+    def jointwise_trapezoidal_trajectory(self):
+        steps, velocities_per_joints = calc.compute_steps_per_joint(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size)
+        n_joints = len(self.q_current)
         traj_q = np.zeros((steps, n_joints))
         traj_qd = np.zeros((steps, n_joints))
         traj_qdd = np.zeros((steps, n_joints))
         for i in range(n_joints):
             try:
-                i_traj = rtb.trapezoidal(t = steps, q0=q_start[i], qf=q_end[i], V=self.max_velocity*self.step_size)
+                i_traj = rtb.trapezoidal(t = steps, q0=self.q_current[i], qf=self.q_end[i], V=velocities_per_joints[i]*self.step_size)
             except Exception as e:
                 print(f"Error occurred while computing trajectory for joint {i}: {e}. Using default V.")
-                i_traj = rtb.trapezoidal(t = steps, q0=q_start[i], qf=q_end[i])
+                i_traj = rtb.trapezoidal(t = steps, q0=self.q_current[i], qf=self.q_end[i])
             traj_q[:, i] = i_traj.q
             traj_qd[:, i] = i_traj.qd
             traj_qdd[:, i] = i_traj.qdd

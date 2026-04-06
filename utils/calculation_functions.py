@@ -71,27 +71,37 @@ def compute_steps_per_joint(q_start: np.ndarray, q_end: np.ndarray, v_max: float
     Acceleration: rad/s^2
     """
 
-    s_all = []
+    # 1. Find the joint with the max distance
+    delta_qs = [abs(q_end[i] - q_start[i]) for i in range(len(q_start))]
+    idx_max = int(np.argmax(delta_qs))
+    delta_q_max = delta_qs[idx_max]
 
+    # 2. Compute the time and steps for the max joint
+    t_acc = v_max / a_max
+    q_acc = 0.5 * a_max * t_acc**2
+    q_acc_total = 2 * q_acc
+    if delta_q_max > q_acc_total:
+        # Trapezoidal profile
+        q_const = delta_q_max - q_acc_total
+        t_const = q_const / v_max
+        T_total = 2 * t_acc + t_const
+        vmax_max = v_max
+    else:
+        # Triangular profile
+        T_total = 2 * np.sqrt(delta_q_max / a_max)
+        vmax_max = a_max * (T_total / 2)
+    steps = int(np.ceil(T_total / dt))
+
+    # 3. For all joints, scale the peak velocity by the proportion of distance
+    vmax_all = []
     for i in range(len(q_start)):
-        delta_q = abs(q_end[i] - q_start[i])
-
-        t_acc = v_max / a_max
-        q_acc = 0.5 * a_max * t_acc**2
-        q_acc_total = 2 * q_acc
-
-        if delta_q > q_acc_total:
-            # Trapezoidal profile
-            q_const = delta_q - q_acc_total
-            t_const = q_const / v_max
-            T_i = 2 * t_acc + t_const
+        if delta_q_max == 0:
+            vmax_i = 0.0
         else:
-            # Triangular profile
-            T_i = 2 * np.sqrt(delta_q / a_max)
+            vmax_i = vmax_max * (delta_qs[i] / delta_q_max)
+        vmax_all.append(vmax_i)
 
-        s_all.append(int(np.ceil(T_i / dt)))
-
-    return s_all
+    return steps, vmax_all
 
 def compute_T_jtraj(delta_q, v_max, a_max):
     """
