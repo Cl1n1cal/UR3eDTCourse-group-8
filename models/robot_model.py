@@ -6,6 +6,7 @@ import utils.calculation_functions as calc
 from communication.protocol import RobotMode
 import spatialmath as spm
 import matplotlib.pyplot as plt
+from roboticstoolbox.tools.trajectory import Trajectory
 
 class RobotModel:
     def __init__(self, step_size: float = 0.01, d = [0.0], a = [0.0], alpha = [0.0]):
@@ -43,7 +44,7 @@ class RobotModel:
         return self.qd_current / self.step_size
     
     def get_qdd_current(self) -> np.ndarray:
-        return self.qdd_current / self.step_size**2
+        return self.qdd_current / self.step_size
     
     def get_q_end(self) -> np.ndarray:
         return self.q_end
@@ -111,7 +112,20 @@ class RobotModel:
     
     def set_move_traj(self):
         self.current_traj_index = 0
-        self.trajectory = rtb.mtraj(rtb.trapezoidal, self.q_current, self.q_end, calc.compute_steps(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size)) 
+        self.trajectory = self.jointwise_trapezoidal_trajectory(self.q_current, self.q_end, calc.compute_steps(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size))
+    
+    def jointwise_trapezoidal_trajectory(self, q_start, q_end, steps):
+        n_joints = len(q_start)
+        traj_q = np.zeros((steps, n_joints))
+        traj_qd = np.zeros((steps, n_joints))
+        traj_qdd = np.zeros((steps, n_joints))
+        for i in range(n_joints):
+            i_traj = rtb.trapezoidal(t = steps, q0=q_start[i], qf=q_end[i], V=self.max_velocity*self.step_size)
+            traj_q[:, i] = i_traj.q
+            traj_qd[:, i] = i_traj.qd
+            traj_qdd[:, i] = i_traj.qdd
+        traj = Trajectory(name = "jointwise_trapezoidal", t = steps, s=traj_q, sd=traj_qd, sdd=traj_qdd)
+        return traj
 
     def update_dh_parameters(self, d: list, a: list, alpha: list):
         print("Updating params")
