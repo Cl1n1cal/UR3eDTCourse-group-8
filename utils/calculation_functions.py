@@ -64,6 +64,35 @@ def compute_steps(q_start: np.ndarray, q_end: np.ndarray, v_max: float, a_max: f
 
     return n_steps
 
+def compute_steps_per_joint(q_start: np.ndarray, q_end: np.ndarray, v_max: float, a_max: float, dt: float):
+    """
+    Positions: radians
+    Velocity: rad/s
+    Acceleration: rad/s^2
+    """
+
+    s_all = []
+
+    for i in range(len(q_start)):
+        delta_q = abs(q_end[i] - q_start[i])
+
+        t_acc = v_max / a_max
+        q_acc = 0.5 * a_max * t_acc**2
+        q_acc_total = 2 * q_acc
+
+        if delta_q > q_acc_total:
+            # Trapezoidal profile
+            q_const = delta_q - q_acc_total
+            t_const = q_const / v_max
+            T_i = 2 * t_acc + t_const
+        else:
+            # Triangular profile
+            T_i = 2 * np.sqrt(delta_q / a_max)
+
+        s_all.append(int(np.ceil(T_i / dt)))
+
+    return s_all
+
 def compute_T_jtraj(delta_q, v_max, a_max):
     """
     delta_q : displacement (radians or degrees)

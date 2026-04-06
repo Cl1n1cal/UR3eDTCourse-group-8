@@ -120,7 +120,11 @@ class RobotModel:
         traj_qd = np.zeros((steps, n_joints))
         traj_qdd = np.zeros((steps, n_joints))
         for i in range(n_joints):
-            i_traj = rtb.trapezoidal(t = steps, q0=q_start[i], qf=q_end[i], V=self.max_velocity*self.step_size)
+            try:
+                i_traj = rtb.trapezoidal(t = steps, q0=q_start[i], qf=q_end[i], V=self.max_velocity*self.step_size)
+            except Exception as e:
+                print(f"Error occurred while computing trajectory for joint {i}: {e}. Using default V.")
+                i_traj = rtb.trapezoidal(t = steps, q0=q_start[i], qf=q_end[i])
             traj_q[:, i] = i_traj.q
             traj_qd[:, i] = i_traj.qd
             traj_qdd[:, i] = i_traj.qdd
