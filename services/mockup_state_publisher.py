@@ -9,13 +9,14 @@ from startup.utils.config import load_config_w_setuptools; c=load_config_w_setup
 
 class MockupStatePublisher:
 
-    def __init__(self, dead_mockup_time_threshold):
+    def __init__(self, use_local_mockup_time=False, dead_mockup_time_threshold = 0.05):
         self.rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.start_time = 0.0
         self.dead_mockup_threshold = dead_mockup_time_threshold
         self.dead_mockup_time = 0.0
         self.last_msg_time = None
         self.last_msg_delay = 0.0
+        self.use_local_mockup_time = use_local_mockup_time
         self._l = create_service_logger("mockup_state_publisher")
         self.is_first_message = True
     
@@ -45,8 +46,11 @@ class MockupStatePublisher:
         return message
     
     def format_recorder_state_message(self, data: dict) -> dict:
-        time = self.start_time + data[RobotArmStateKeys.TIMESTAMP] + self.dead_mockup_time
-        timestamp = datetime.fromtimestamp(time, timezone.utc).isoformat()
+        if self.use_local_mockup_time:
+            msg_time = self.start_time + data[RobotArmStateKeys.TIMESTAMP] + self.dead_mockup_time
+        else:
+            msg_time = time.time()
+        timestamp = datetime.fromtimestamp(msg_time, timezone.utc).isoformat()
         fields = {}
         fields[RobotArmStateKeys.ROBOT_MODE] = data[RobotArmStateKeys.ROBOT_MODE]
         fields[RobotArmStateKeys.JOINT_MAX_SPEED] = data[RobotArmStateKeys.JOINT_MAX_SPEED]
@@ -79,7 +83,8 @@ class MockupStatePublisher:
             self.set_start_time(message)
             self.is_first_message = False
 
-        self.check_for_dead_mockup(message)
+        if self.use_local_mockup_time:
+            self.check_for_dead_mockup(message)
 
         msg = self.format_recorder_state_message(data)
         
