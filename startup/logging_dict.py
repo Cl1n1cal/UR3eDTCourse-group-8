@@ -23,7 +23,7 @@ LOGGING_CONFIG = {
             'propagate': True
         },
         'calibration_service': {
-            'level': 'INFO',
+            'level': 'DEBUG',
             'handlers': [],
             'propagate': True
         },
