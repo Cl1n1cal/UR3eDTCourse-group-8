@@ -16,6 +16,7 @@ class CtrlMsgFields:
     PAUSE = "pause"
     STOP = "stop"
     INJECT_FAULT = "inject_fault"
+    UNSTUCK_JOINT = "unstuck_joint"
 
 
 class CtrlMsgKeys:
