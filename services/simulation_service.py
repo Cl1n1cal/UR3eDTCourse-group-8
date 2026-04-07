@@ -1,19 +1,21 @@
+import logging
 import numpy as np
 import time
 from datetime import datetime, timezone
 import math
 import threading
+from utils.calculation_functions import se3_to_pos_rpy
 from models.robot_model import RobotModel
-from communication.rabbitmq import Rabbitmq, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_CTRL, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys
-from communication.factory import RabbitMQFactory
+from communication.rabbitmq import Rabbitmq
+from communication.factory import RabbitMQFactory, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_CTRL, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys, ROUTING_KEY_CALIBRATION
 from communication.protocol import unroll_list
 from startup.utils.logging_config import create_service_logger
 
 class SimulationService:
-    def __init__(self, step_size: float = 0.01, publish_period: float = 0.05, start_time: float = time.time()):
+    def __init__(self, step_size: float = 0.01, publish_period: float = 0.05, start_time: float = time.time(), dh_params: dict = {'d': [0.0], 'a': [0.0], 'alpha': [0.0]}):
         self.step_size = step_size
         self.publish_period = publish_period
-        self.robot_model = RobotModel(step_size=self.step_size)
+        self.robot_model = RobotModel(step_size=self.step_size, d=dh_params['d'], a=dh_params['a'], alpha=dh_params['alpha'])
         self.consumer: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.publisher: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.time = start_time
@@ -29,7 +31,7 @@ class SimulationService:
 
         rdata = self.create_recorder_state_msg()
         mdata = self.create_state_msg()
-        
+
         self.publisher.send_message("robotarm.recorder.arm_state", rdata)
         self.publisher.send_message(ROUTING_KEY_MODEL_STATE, mdata)
         
@@ -44,9 +46,9 @@ class SimulationService:
         
         match msg_type:
             case CtrlMsgFields.LOAD_PROGRAM:
-                q_end = np.array(message.get(CtrlMsgKeys.JOINT_POSITIONS, [[0, 0, 0, 0, 0, 0]])[0]) # Default to 6 zeros if not provided
-                max_velocity = math.radians(message.get(CtrlMsgKeys.MAX_VELOCITY, 0))
-                acceleration = math.radians(message.get(CtrlMsgKeys.ACCELERATION, 0))
+                q_end = np.array(message.get(CtrlMsgKeys.JOINT_POSITIONS, [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])[0], dtype=float)
+                max_velocity = math.radians(message.get(CtrlMsgKeys.MAX_VELOCITY, 0.0))
+                acceleration = math.radians(message.get(CtrlMsgKeys.ACCELERATION, 0.0))
                 self.load_program(q_end, max_velocity, acceleration)
             case CtrlMsgFields.PLAY:
                 self.robot_model.play()
@@ -56,6 +58,10 @@ class SimulationService:
                 self.robot_model.stop()
             case _:
                 self._l.warning(f"Unknown control message type: {msg_type}")
+
+    def read_calibration_message(self, ch, method, properties, message: dict):
+        self._l.info(f"Received calibration message, updating model's DH parameters: {message}")
+        self.robot_model.update_dh_parameters(d = message['d'], a =message['a'], alpha = message['alpha'])
 
     def step_simulation(self):
         self.time += self.step_size
@@ -68,6 +74,8 @@ class SimulationService:
         self.consumer.connect_to_server()
         self.consumer.subscribe(routing_key=ROUTING_KEY_CTRL,
                                 on_message_callback=self.read_control_message)
+        self.consumer.subscribe(routing_key=ROUTING_KEY_CALIBRATION,
+                                on_message_callback=self.read_calibration_message)
     
     def start_serving(self):
         stop_event = threading.Event()
@@ -106,7 +114,7 @@ class SimulationService:
         fields.update(unroll_list(RobotArmStateKeys.Q_ACTUAL, self.robot_model.get_q_current().tolist()))
         fields.update(unroll_list(RobotArmStateKeys.QD_ACTUAL, self.robot_model.get_qd_current().tolist()))
         fields.update(unroll_list(RobotArmStateKeys.Q_TARGET, self.robot_model.get_q_end().tolist()))
-        fields.update(unroll_list(RobotArmStateKeys.TCP_POSE, self.robot_model.get_tcp_pose_current().t.tolist()))
+        fields.update(unroll_list(RobotArmStateKeys.TCP_POSE, se3_to_pos_rpy(self.robot_model.get_tcp_pose_current()).tolist()))
 
         rdata = {
             "measurement": "simulation_state",
@@ -129,7 +137,7 @@ class SimulationService:
             RobotArmStateKeys.TIMESTAMP: timestamp,
             RobotArmStateKeys.JOINT_MAX_SPEED: self.robot_model.max_velocity,
             RobotArmStateKeys.JOINT_MAX_ACCELERATION: self.robot_model.max_acceleration,
-            RobotArmStateKeys.TCP_POSE: self.robot_model.get_tcp_pose_current().t.tolist()
+            RobotArmStateKeys.TCP_POSE: se3_to_pos_rpy(self.robot_model.get_tcp_pose_current()).tolist()
         }
 
         return mdata

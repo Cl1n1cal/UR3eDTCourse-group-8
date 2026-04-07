@@ -12,7 +12,7 @@ class DBRecorderService:
         self.influx_db_org = None
         self.influxdb_bucket = None
         self.rabbitmq = None
-        self._l = create_service_logger("db_recorder_service", level=logging.DEBUG)
+        self._l = create_service_logger("db_recorder_service")
 
     def record_message(self, ch, method, properties, body_json):
         self._l.debug("New record msg:")

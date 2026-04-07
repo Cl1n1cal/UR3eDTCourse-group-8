@@ -1,8 +1,9 @@
 import logging
-import logging.handlers
+import logging.config
 import os
+from ..logging_dict import LOGGING_CONFIG, LOG_DIR_PATH
 
-LOG_DIR_PATH = os.path.join(os.path.dirname(__file__), "../../logs/")
+logging.config.dictConfig(LOGGING_CONFIG)
 
 #deprecated
 def config_logging(filename=None, level=logging.WARN):
@@ -23,17 +24,14 @@ def config_logging(filename=None, level=logging.WARN):
                             datefmt='%Y-%m-%d %H:%M:%S'
                             )
 
-def setup_root_logging(name = "global",level=logging.INFO):
+def setup_root_logging(name = "global"):
     root_logfile = LOG_DIR_PATH + name + ".log"
     root_logger = logging.getLogger()   # root logger
-    root_logger.setLevel(level)
-
-    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s",
-                            "%Y-%m-%d %H:%M:%S")
+    fmt = root_logger.handlers[0].formatter
 
     if not any(isinstance(h, logging.FileHandler) and h.baseFilename == str(root_logfile)
                for h in root_logger.handlers):
-        fh = logging.handlers.RotatingFileHandler(root_logfile, maxBytes=10*1024*1024 ,encoding="utf-8")
+        fh = logging.FileHandler(root_logfile, encoding="utf-8", mode='w')
         fh.setFormatter(fmt)
         root_logger.addHandler(fh)
 
@@ -42,16 +40,15 @@ def setup_root_logging(name = "global",level=logging.INFO):
         ch.setFormatter(fmt)
         root_logger.addHandler(ch)
 
-def create_service_logger(service_name, level=logging.INFO):
+def create_service_logger(service_name):
     service_logfile = LOG_DIR_PATH + service_name + ".log"
     logger = logging.getLogger(service_name)   # child logger
-    logger.setLevel(level)
     # avoid duplicate handler on repeated init
+    fmt = logging.getLogger().handlers[0].formatter
     if not any(isinstance(h, logging.FileHandler) and h.baseFilename == str(service_logfile)
                for h in logger.handlers):
-        h = logging.handlers.RotatingFileHandler(service_logfile, maxBytes=5*1024*1024, encoding="utf-8")
-        h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s",
-                                         "%Y-%m-%d %H:%M:%S"))
+        h = logging.FileHandler(service_logfile, encoding="utf-8", mode='w')
+        h.setFormatter(fmt)
         logger.addHandler(h)
 
     logger.propagate = True   # default, ensure global root also receives

@@ -4,9 +4,9 @@ import numpy as np
 
 # Construct control message for loading a program
 client = RabbitMQFactory.create_rabbitmq()
-position = [3.0,2.0,1.0,-1.0,-2.0,-3.0]
-vel = 60 # deg/s
-acc = 80 # deg/s²
+position = [3.0,2.0,1.0,-3.0,-2.0,-3.0]
+vel = 15 # deg/s
+acc = 5 # deg/s²
 
 msg = {
     CtrlMsgKeys.TYPE: CtrlMsgFields.LOAD_PROGRAM,

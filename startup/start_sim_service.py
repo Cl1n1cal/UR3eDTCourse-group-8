@@ -5,7 +5,9 @@ from utils.configuration import load_config; config = load_config('startup/start
 from services.simulation_service import SimulationService
 
 def start_sim_service(ok_queue=None):
-    sim_service = SimulationService(config['digital_twin']['robot_model']['time_step'], config['digital_twin']['robot_model']['publish_period'])
+    sim_service = SimulationService(step_size=config['digital_twin']['robot_model']['time_step'], 
+                                    publish_period=config['digital_twin']['robot_model']['publish_period'], 
+                                    dh_params=config['digital_twin']['robot_model']['dh_parameters'])
   
     sim_service.setup(config['digital_twin']['robot_model']['initial_q'],
                       config['digital_twin']['robot_model']['max_velocity'], 
