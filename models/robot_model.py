@@ -61,6 +61,7 @@ class RobotModel:
                 
     def iterate_trajectory(self):
         if self.trajectory is None:
+            self.pause()
             print("No trajectory to follow.")
             return
         
@@ -69,6 +70,7 @@ class RobotModel:
         traj_qdd = getattr(self.trajectory, "qdd", None)
 
         if traj_q is None or traj_qd is None or traj_qdd is None:
+            self.pause()
             print("Trajectory does not have expected fields.")
             return
 
@@ -117,6 +119,9 @@ class RobotModel:
     
     def jointwise_trapezoidal_trajectory(self):
         steps, velocities_per_joints = calc.compute_steps_per_joint(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size)
+        if steps == 0:
+            print("Already at target position.")
+            return None
         n_joints = len(self.q_current)
         traj_q = np.zeros((steps, n_joints))
         traj_qd = np.zeros((steps, n_joints))
