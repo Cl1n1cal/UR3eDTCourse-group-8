@@ -17,6 +17,7 @@ class CalibrationService:
         self.robot = None
         self.max_pos_error = 0.01 # 1cm
         self.max_rot_error = 0.017 # ~1 degree in radians
+        self.aggregate_window_size = 50 # ms
         self._l = create_service_logger("calibration_service")
 
     def setup(self, calibration_config):
@@ -29,10 +30,12 @@ class CalibrationService:
         self.time_interval = calibration_config["time_interval"]
         self.max_pos_error = calibration_config["max_position_error"]
         self.max_rot_error = calibration_config["max_rotation_error"]
+        self.aggregate_window_size = calibration_config["aggregate_window_size"]
         self.dh_guess = np.array(calibration_config["initial_guess"]["d"] + calibration_config["initial_guess"]["a"] + calibration_config["initial_guess"]["alpha"])
 
     def get_mockup_values(self):
         start = f"-{self.time_interval}s"
+        window = f"{int(self.aggregate_window_size)}ms"
         query = f'''
         from(bucket: "{self.bucket}")
         |> range(start: {start})
@@ -51,6 +54,7 @@ class CalibrationService:
             "tcp_pose_4",
             "tcp_pose_5",
         ]))
+        |> aggregateWindow(every: {window}, fn: last, createEmpty: true)
         |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"])
         '''
@@ -70,6 +74,8 @@ class CalibrationService:
                 }
                 data.append(entry)
 
+        self._l.debug(f"Retrieved {len(data)} samples from InfluxDB for calibration.")
+        
         return data
 
     def start_serving(self):
