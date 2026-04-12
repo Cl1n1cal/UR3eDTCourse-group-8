@@ -1,13 +1,10 @@
-"""
-This module starts the executable in '../ur3e_mockup/' folder named 'ur3e_mockup'.
-"""
-
 import subprocess
 import os
 import platform
+
 from startup.utils.logging_config import create_service_logger
 
-logger = create_service_logger("start_ur3e_mockup")
+logger = create_service_logger("start_visualization_service")
 
 def _get_executable_path(system, machine):
     """
@@ -19,28 +16,29 @@ def _get_executable_path(system, machine):
     Raises:
         OSError: If the OS is not supported or executable not found
     """
+    if machine != "x86_64":
+        raise OSError(f"Unsupported machine architecture: {machine}. Supported architectures: x86_64")
+    
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    ur3e_mockup_dir = os.path.join(current_dir, "../ur3e_mockup")
+    vis_dir = os.path.join(current_dir, "../ur3e_dt_visualization")
     executable_path = None
-    if system == "Darwin":
-        # macOS (Intel and ARM/Apple Silicon)
-        executable_name = "ur3e_mockup_macos_" + machine
-        executable_path = os.path.join(ur3e_mockup_dir, executable_name)
-    elif system == "Windows":
+    if system == "Windows":
         # Windows
-        executable_name = "ur3e_mockup_win.exe"
-        executable_path = os.path.join(ur3e_mockup_dir, executable_name)
+        executable_name = "UR3e.exe"
+        print(f"exec_name: {executable_name}")
+        vis_dir = os.path.join(vis_dir, "exports/windows")
+        executable_path = os.path.join(vis_dir, executable_name)
     elif system == "Linux":
         # Linux
-        executable_name = "ur3e_mockup_linux_" + machine
+        executable_name = "UR3e.x86_64"
         print(f"exec_name: {executable_name}")
-        executable_path = os.path.join(ur3e_mockup_dir, executable_name)
-
+        vis_dir = os.path.join(vis_dir, "exports/linux")
+        executable_path = os.path.join(vis_dir, executable_name)
     else:
         # Other systems
         raise OSError(
             f"Unsupported operating system: {system}. "
-            f"Supported systems: Darwin (macOS), Windows, Linux"
+            f"Supported systems: Windows, Linux"
         )
 
     if not os.path.exists(executable_path):
@@ -48,10 +46,9 @@ def _get_executable_path(system, machine):
 
     return executable_path
 
-
-def start_robot_arm_mockup(ok_queue=None):
+def start_visualization_service(ok_queue=None):
     """
-    Starts the ur3e_mockup executable and keeps it running.
+    Starts the ur3e_visualization executable and keeps it running.
     Handles graceful shutdown via Ctrl+C (SIGINT).
     """
     # Get the platform-specific executable path
@@ -72,7 +69,7 @@ def start_robot_arm_mockup(ok_queue=None):
         process.wait()
     except KeyboardInterrupt:
         # Handle Ctrl+C gracefully
-        logger.info("Shutting down robot arm mockup...")
+        logger.info("Shutting down visualization service...")
         process.terminate()
         try:
             process.wait(timeout=5)
@@ -80,8 +77,4 @@ def start_robot_arm_mockup(ok_queue=None):
             process.kill()
             process.wait()
     finally:
-        logger.info("Robot arm mockup stopped.")
-
-
-if __name__ == "__main__":
-    start_robot_arm_mockup()
+        logger.info("Robot arm visualization service stopped.")
