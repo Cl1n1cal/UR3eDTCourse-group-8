@@ -6,21 +6,29 @@ import torch.optim as optim
 
 # Creating the model
 # Define the neural network model (a simple linear regression model)
+
 class LinearRegression(nn.Module):
     def __init__(self):
         super(LinearRegression, self).__init__()
-        self.linear = nn.Linear(18, 12)  # 24 input features and 12 output
+        
+        self.net = nn.Sequential(
+            nn.Linear(18, 64),   # hidden layer 1
+            nn.ReLU(),
+            nn.Linear(64, 32),   # hidden layer 2
+            nn.ReLU(),
+            nn.Linear(32, 12)    # output layer
+        )
 
     def forward(self, x):
-        return self.linear(x)
+        return self.net(x)
 
 # Initialize the model and define the loss function (Mean Squared Error)
 model = LinearRegression()
-#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#model = model.to(device) # T
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = model.to(device) # T
 learning_rate = 0.01
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-num_epochs = 20000  # Number of epochs to train
+num_epochs = 10000  # Number of epochs to train
 
 # Define the loss function (Mean Squared Error)
 loss_fn = nn.MSELoss()
@@ -66,8 +74,10 @@ for q in range(70):
 
     assert len(x) == len(y), "X and y are not the same length"
 
-    X_train = torch.tensor(x)
-    Y_train = torch.tensor(y)
+    #X_train = torch.tensor(x)
+    #Y_train = torch.tensor(y)
+    X_train = torch.tensor(x).float().to(device)
+    Y_train = torch.tensor(y).float().to(device)
     #print("len x:", len(x))
     #print("len y:", len(y))
     #print("X_train", X_train)
@@ -75,6 +85,7 @@ for q in range(70):
 
 
     # Training loop
+    model.train() # Before training loops
     for epoch in range(num_epochs):
         optimizer.zero_grad()  # Zero out gradients
         outputs = model(X_train)  # Forward pass
@@ -87,4 +98,4 @@ for q in range(70):
         if (epoch + 1) % 500 == 0:
             print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f}')
 
-torch.save(model.state_dict(), 'nn_model.pth')
+torch.save(model.state_dict(), 'nn_model_more_layers.pth')

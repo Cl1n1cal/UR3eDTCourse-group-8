@@ -10,6 +10,7 @@ class LinearRegression(nn.Module):
     def forward(self, x):
         return self.linear(x)
 
+
 class RobotPredictionNN:
     def __init__(self, model_path='nn_model.pth'):
         # Instantiate the model
