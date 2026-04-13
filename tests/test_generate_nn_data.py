@@ -70,7 +70,7 @@ def generate_from_pos_target_pos_range(start, end, from_pos, target_pos):
         for k in range(6):
             if start <= k and k <= end:
                 #r_num = round(random.uniform(-2*np.pi, 2*np.pi), 4)
-                if tmp[k] < 0.0:
+                if tmp[k] <= 0.0:
                     tmp1.append(tmp[k] + 2)
                 else:
                     tmp1.append(tmp[k] - 2)
@@ -103,14 +103,25 @@ assert len(from_pos) == len(target_pos), "From pos and target pos are not the sa
 velocities = []
 accelerations = []
 for i in range(velocity_count):
-    # Rounded to interger
-    tmp = round(random.uniform(10,100))
-    velocities.append(tmp)
+    # Rounded to integer, ensure minimum of 1
+    tmp = max(3, round(random.uniform(10, 100)))
+    if tmp > 0.0:
+        velocities.append(tmp)
 
-    # make sure that acc is smaller than vel
-    accelerations.append(round(random.uniform(10,tmp-1)))
+    # make sure that acc is smaller than vel and at least 1
+    acc_val = max(1, round(random.uniform(1, tmp - 1)))
+    if acc_val > 0.0:
+        accelerations.append(acc_val)
 
 assert len(velocities) == len(accelerations), "Velocities and accelerations are not the same length"
+
+for vel in velocities:
+    if vel <= 0.0:
+        raise Exception("Vel was < 0.0")
+    
+for acc in accelerations:
+    if acc < 0.0:
+        raise Exception("Acc was < 0.0")
 
 print("Vels:", velocities)
 print("Accs:", accelerations)
@@ -126,26 +137,67 @@ data = {}
 
 # Generate a trajectory for all of the velocities and acceleration and for all the different positions
 traj_counter = 0
-file_counter = 0
+file_counter = 52
 for h in range(len(velocities)):
-    print("Velocities:", h)
 
     for k in range(len(from_pos)):
+        # Skip if no movement is required (from_pos == target_pos)
+        if np.allclose(from_pos[k], target_pos[k]):
+            print(f"Skipping trajectory {k}: from_pos and target_pos are identical")
+            continue
+            
         # Set start pos
-        robot_model.setup_initial_state(from_pos[k], velocities[h], accelerations[h])
+        robot_model.q_current = from_pos[k]
+
         # Set end pos and do calculation
         robot_model.load_program(target_pos[k], velocities[h], accelerations[h])
-
         trajectory = robot_model.trajectory
 
         traj_q = getattr(trajectory, "q", None)
         traj_qd = getattr(trajectory, "qd", None)
 
-        trajectory = {}
-        trajectory["traj_q"] = traj_q.tolist()
-        trajectory["traj_qd"] = traj_qd.tolist()
+        if traj_qd is None or traj_q is None:
+            raise Exception("Traj_q or traj_qd was none")
 
-        data[f"Trajectory_{traj_counter}"] = trajectory
+        traj_q = traj_q.tolist()
+        traj_qd = traj_qd.tolist()
+        target_q = target_pos[k]
+
+        for i in range(len(traj_qd)):
+            vels = traj_qd[i]
+            for j in range(len(vels)):
+                vels[j] = round(vels[j], 4)
+
+        trajectory = {}
+        steps = {}
+        joints = {}
+
+        for i in range(len(traj_q)):
+            vels = traj_qd[i]
+            positions = traj_q[i]
+            for j in range(len(positions)):
+                joint = positions[j]
+                joints[f"q_current_{j}"] = joint
+            
+            for j in range(len(vels)):
+                vel = vels[j]
+                joints[f"qd_current_{j}"] = vel
+
+            for j in range(len(target_q)):
+                joint = target_q[j]
+                joints[f"q_target_{j}"] = joint
+
+            steps[f"step_{i}"] = joints
+            joints = {}
+
+
+
+
+        #trajectory["traj_q"] = traj_q.tolist()
+        #trajectory["traj_qd"] = traj_qd.tolist()
+
+        data[f"Trajectory_{traj_counter}"] = steps
+        steps = {}
 
         traj_counter += 1
 
