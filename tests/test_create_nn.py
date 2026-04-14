@@ -30,7 +30,7 @@ data = None
 
 for q in range(70):
     print("Q:", q)
-    with open(f"nn_data/trajectories_{q}.json", "r") as file:
+    with open(f"nn_folder/nn_training_data/trajectories_{q}.json", "r") as file:
         data = json.load(file)
 
     # List of data frames

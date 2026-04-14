@@ -50,7 +50,7 @@ if __name__ == "__main__":
     heater_state = 1   # Heater state (1: ON, 0: OFF)
 
 
-    with open(f"nn_data/trajectories_{50}.json", "r") as file:
+    with open(f"nn_folder/nn_test_data/trajectories_{100}.json", "r") as file:
         data = json.load(file)
 
     # List of data frames
