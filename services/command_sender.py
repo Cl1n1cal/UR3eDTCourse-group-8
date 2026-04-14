@@ -159,7 +159,7 @@ class CommandSenderUI(ctk.CTk):
         vel_label.grid(row=0, column=0, padx=8, pady=(6, 2), sticky="w")
 
         self.load_vel_entry = ctk.CTkEntry(vel_frame)
-        self.load_vel_entry.insert(0, "0.5")
+        self.load_vel_entry.insert(0, "80")
         self.load_vel_entry.grid(row=1, column=0, padx=8, pady=(0, 6), sticky="ew")
 
         acc_frame = ctk.CTkFrame(container)
@@ -170,7 +170,7 @@ class CommandSenderUI(ctk.CTk):
         acc_label.grid(row=0, column=0, padx=8, pady=(6, 2), sticky="w")
 
         self.load_acc_entry = ctk.CTkEntry(acc_frame)
-        self.load_acc_entry.insert(0, "0.5")
+        self.load_acc_entry.insert(0, "60")
         self.load_acc_entry.grid(row=1, column=0, padx=8, pady=(0, 6), sticky="ew")
 
         # PLAY / PAUSE / STOP
