@@ -114,7 +114,6 @@ class RobotModel:
     
     def set_move_traj(self):
         self.current_traj_index = 0
-        steps = calc.compute_steps(self.q_current, self.q_end, self.max_velocity, self.max_acceleration, self.step_size)
         self.trajectory = self.jointwise_trapezoidal_trajectory()
     
     def jointwise_trapezoidal_trajectory(self):
