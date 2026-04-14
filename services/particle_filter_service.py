@@ -7,7 +7,7 @@ import threading
 from utils.calculation_functions import se3_to_pos_rpy
 from models.robot_model import RobotModel
 from communication.rabbitmq import Rabbitmq
-from communication.factory import RabbitMQFactory, ROUTING_KEY_PARTICLE, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_STATE, ParticleFilterMsgKeys, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys, ROUTING_KEY_CALIBRATION
+from communication.factory import RabbitMQFactory, ROUTING_KEY_PARTICLE, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_STATE, ROUTING_KEY_CTRL, ParticleFilterMsgKeys, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys, ROUTING_KEY_CALIBRATION
 from communication.protocol import unroll_list
 from startup.utils.logging_config import create_service_logger
 
@@ -17,6 +17,8 @@ class ParticleFilterService:
         self.consumer: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.publisher: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.time = start_time
+        self.mockup_msg_count = 0
+        self.sim_msg_count = 0
         
         self._l = create_service_logger("particle_filter_service")
     
@@ -88,9 +90,16 @@ class ParticleFilterService:
         }
 
         return rdata
+    
+    def calculate_next_values(self):
+        # TODO:
+        # 1. Have the nn inside of the class
+        # 2. Make a prediction with the nn
+        # 3. Return the result
 
     def read_mockup_state(self, ch, method, properties, message: dict):
         self._l.debug(f"Received mockup state message: {message}")
+        self.mockup_msg_count += 1
 
         data = self.validate_state_message(message)
         if not data:
@@ -104,10 +113,36 @@ class ParticleFilterService:
         #    self.check_for_dead_mockup(message)
 
         msg = self.format_recorder_state_message(data)
+    
+    def read_simulation_state(self, ch, method, properties, message: dict):
+        self._l.debug(f"Received mockup state message: {message}")
+        self.sim_msg_count += 1
 
-    def step_simulation(self):
-        self.time += self.step_size
-        self.robot_model.step()
+        data = self.validate_state_message(message)
+        if not data:
+            return
+        
+        #if self.is_first_message:
+        #    self.set_start_time(message)
+        #    self.is_first_message = False
+
+        #if self.use_local_mockup_time:
+        #    self.check_for_dead_mockup(message)
+
+
+
+        msg = self.format_recorder_state_message(data)
+
+        # TODO: Possibly use 2 threads, one for each subscriber. Then use threads that block when the mockup value has not yet arrived
+        # 1. Calculate next values
+        # 2. Use the mockup value to calculate with the particle filter
+        # 3. Publish the result
+
+
+    # Reset the message counter, ready for new state transitions
+    def reset_msg_counter(self):
+        self.mockup_msg_count = 0
+        self.sim_msg_count = 0
     
     def setup(self, initial_q = [0.0,0.0,0.0,0.0,0.0,0.0], max_velocity = 0, max_acceleration = 0):
         self._l.info("Setting up simulation service.")
@@ -118,6 +153,8 @@ class ParticleFilterService:
                                 on_message_callback=self.read_simulation_state)
         self.consumer.subscribe(routing_key=ROUTING_KEY_STATE,
                                 on_message_callback=self.read_mockup_state)
+        self.consumer.subscribe(routing_key=ROUTING_KEY_CTRL,
+                                on_message_callback=self.reset_msg_counter)
     
     def start_serving(self):
         stop_event = threading.Event()
