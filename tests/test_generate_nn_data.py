@@ -5,7 +5,7 @@ import json
 import roboticstoolbox as rtb
 from models.robot_model import RobotModel
 from communication.protocol import unroll_list
-from communication.factory import RabbitMQFactory, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_CTRL, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys, ROUTING_KEY_CALIBRATION
+from communication.factory import RabbitMQFactory, ROUTING_KEY_PARTICLE, ROUTING_KEY_CTRL, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys, ROUTING_KEY_CALIBRATION
 
 # Factorial growth
 sample_count = 100
