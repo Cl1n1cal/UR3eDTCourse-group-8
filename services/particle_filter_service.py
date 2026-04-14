@@ -19,6 +19,8 @@ class ParticleFilterService:
         self.time = start_time
         self.mockup_msg_count = 0
         self.sim_msg_count = 0
+
+        # TODO: Initialize the nn with 1 layer
         
         self._l = create_service_logger("particle_filter_service")
     
