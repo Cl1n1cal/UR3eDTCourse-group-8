@@ -56,7 +56,6 @@ class RobotArmStateKeys:
 class ParticleFilterMsgKeys:
     Q_ACTUAL = "q_actual"
     QD_ACTUAL = "qd_actual"
-    Q_TARGET = "q_target"
     TIMESTAMP = "timestamp"
 
 class RobotMode:
