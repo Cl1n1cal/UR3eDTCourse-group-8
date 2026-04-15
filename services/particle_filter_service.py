@@ -240,9 +240,11 @@ class ParticleFilterService:
 
     # Reset the message counter, ready for new state transitions
     def reset_msg_counter(self):
-        self.mockup_msg_count = 0
-        self.sim_msg_count = 0
+        self.mutex.acquire()
+        self.sim_msg_queue = []
+        self.mockup_msg_queue = []
         self.first_mockup_item_popped = False
+        self.mutex.release()
     
     def start_serving(self):
         stop_event = threading.Event()

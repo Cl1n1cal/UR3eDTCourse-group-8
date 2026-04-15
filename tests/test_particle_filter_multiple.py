@@ -12,8 +12,8 @@ with open("sim_results_rounded.json", "r") as file:
     sim_data = json.load(file)
 
 
-mockup_joints = [] # List of list: List of joints positions(list)
-sim_joints = []
+mockup_steps = [] # List of list: List of joints positions(list)
+sim_steps = []
 
 # Get joints values from the mockup
 for elem in mockup_data:
@@ -25,7 +25,7 @@ for elem in mockup_data:
     tmp.append(elem.get("q_actual_4"))
     tmp.append(elem.get("q_actual_5"))
 
-    mockup_joints.append(tmp)
+    mockup_steps.append(tmp)
 
 for elem in sim_data:
     tmp = []
@@ -36,9 +36,9 @@ for elem in sim_data:
     tmp.append(elem.get("q_actual_4"))
     tmp.append(elem.get("q_actual_5"))
 
-    sim_joints.append(tmp)
+    sim_steps.append(tmp)
 
-assert len(mockup_joints) == len(sim_joints), "Mockup joints and sim joints are not the same length"
+assert len(mockup_steps) == len(sim_steps), "Mockup joints and sim joints are not the same length"
 
 # Measurement noise parameters (GPS-like noise)
 mockup_noise = 0.00003  # Standard deviation (m) taken from UR3e datasheet: https://www.universal-robots.com/media/1807464/ur3e_e-series_datasheets_web.pdf
@@ -62,35 +62,43 @@ mockup_measurements = []
 pf_estimates = []  # Particle filter estimated positions
 
 # Particle Filter Process
-for i in range(len(mockup_joints)):
-    # --- Simulated Motion (Model with Drift) ---
-    sim_val = sim_joints[i]
+# For every step in total steps
+for i in range(len(mockup_steps)):
 
-    # --- Mockup Measurement (with Noise) ---
-    mockup_val = mockup_joints[i]
+    sim_step = sim_steps[i]
+    mockup_step = mockup_steps[i]
 
-    # --- Particle Filter Update ---
-    # 1. Motion Update: Particles drift slightly from simulation prediction
-    process_noise = 0.02  # How much particles can deviate from sim
-    particles = np.random.normal(sim_val0, process_noise, num_particles)
+    # For every joint
+    for j in range(6):
+        # --- Simulated Motion (Model with Drift) ---
+        
+        sim_joint = sim_step[j]
 
-    # 2. Measurement Update: Weight particles based on mockup (noisy measurement)
-    weights = np.exp(-0.5 * ((particles0 - mockup_val0) / mockup_noise) ** 2)
-    weights += 1e-300  # Avoid zeros
-    weights /= np.sum(weights)  # Normalize weights
+        # --- Mockup Measurement (with Noise) ---
+        mockup_joint = mockup_step[j]
 
-    # 3. Resampling: Draw new particles based on weights
-    indices = np.random.choice(range(num_particles), size=num_particles, p=weights)
-    particles = particles[indices]
+        # --- Particle Filter Update ---
+        # 1. Motion Update: Particles drift slightly from simulation prediction
+        process_noise = 0.02  # How much particles can deviate from sim
+        particles[j] = np.random.normal(0, 1, num_particles)  # Initialize particles around 0
 
-    # Store estimated position as the mean of particles
-    pf_estimate = np.mean(particles)
+        # 2. Measurement Update: Weight particles based on mockup (noisy measurement)
+        weights = np.exp(-0.5 * ((particles[j] - mockup_joint) / mockup_noise) ** 2)
+        weights += 1e-300  # Avoid zeros
+        weights /= np.sum(weights)  # Normalize weights
 
-    # Store values
-    #true_positions.append(true_x)
-    sim_positions.append(sim_val)
-    mockup_measurements.append(mockup_val)
-    pf_estimates.append(pf_estimate)
+        # 3. Resampling: Draw new particles based on weights
+        indices = np.random.choice(range(num_particles), size=num_particles, p=weights)
+        particles = particles[indices]
+
+        # Store estimated position as the mean of particles
+        pf_estimate = np.mean(particles)
+
+        # Store values
+        #true_positions.append(true_x)
+        sim_positions.append(sim_val)
+        mockup_measurements.append(mockup_val)
+        pf_estimates.append(pf_estimate)
 
 # Plot results
 plt.figure(figsize=(10, 5))

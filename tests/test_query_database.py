@@ -169,12 +169,18 @@ class ParticleFilter:
                 "q_actual_3",
                 "q_actual_4",
                 "q_actual_5",
-                "tcp_pose_0",
-                "tcp_pose_1",
-                "tcp_pose_2",
-                "tcp_pose_3",
-                "tcp_pose_4",
-                "tcp_pose_5",
+                "qd_actual_0",
+                "qd_actual_1",
+                "qd_actual_2",
+                "qd_actual_3",
+                "qd_actual_4",
+                "qd_actual_5",
+                "q_target_0",
+                "q_target_1",
+                "q_target_2",
+                "q_target_3",
+                "q_target_4",
+                "q_target_5",
             ]))
             |> aggregateWindow(every: {window}, fn: last, createEmpty: false)
             |> pivot(
@@ -229,3 +235,21 @@ with open("mockup_results.json", "w") as file:
 
 with open("sim_results.json", "w") as file:
     json.dump(sim_data, file, indent=4)
+
+def round_data(filename, output_filename):
+    with open(filename, "r") as file:
+        data = json.load(file)
+    
+    for item in data:
+        for key in item:
+            if key != "time_stamp" and isinstance(item[key], (int, float)):
+                item[key] = round(item[key], 4)
+    
+    with open(output_filename, "w") as file:
+        json.dump(data, file, indent=4)
+    
+    print(f"Processed {filename} → {output_filename}")
+
+# Process both files
+round_data("mockup_results.json", "mockup_results_rounded.json")
+round_data("sim_results.json", "sim_results_rounded.json")
