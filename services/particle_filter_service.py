@@ -20,8 +20,11 @@ class ParticleFilterService:
         self.publisher: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.nn_model: RobotPredictionNN = RobotPredictionNN() # Initialized in the setup function
         self.time = start_time
+        self.step_size = 0.1
+        self.q_target = [] # TODO: Set the q_starget when a load program message arrives
         self.particle_filter_count = 0
         self.close_particle_filter_thread = False
+        self._l = create_service_logger("particle_filter_service")
 
         # Create the thread for the particle filtering function. Started in the start_serving method. Joined in the cleanup function
         self.particle_filter_thread = threading.Thread(target=self.particle_filter_thread_function, daemon=True)
@@ -50,15 +53,17 @@ class ParticleFilterService:
         # Lists to store results
         self.sim_positions = []
         self.mockup_measurements = []
-        self.pf_estimates = []  # Particle filter estimated positions
+        self.pf_estimates = [0]*12  # Particle filter estimated positions
 
     def setup(self, particle_filter_config):
         self._l.info("ParticleFilterService service setup with config ", particle_filter_config)
-        self._l = create_service_logger("particle_filter_service")
 
         # Create the nn
         model_path = particle_filter_config["nn_model_path"]
         self.nn_model.setup(model_path=model_path)
+
+        # Set step size
+        self.step_size = particle_filter_config["time_step"]
         
         # Connect rabbitmqs
         self.publisher.connect_to_server()
@@ -86,8 +91,13 @@ class ParticleFilterService:
     def upload_state(self):
         self._l.debug("Uploading state to RabbitMQ.")
 
+        self.time += self.step_size
+
         rdata = self.create_recorder_state_msg()
         mdata = self.create_state_msg()
+
+        print("PARTICLE FILTER ########################")
+        print("rdata", rdata)
 
         self.publisher.send_message("robotarm.recorder.particle_filter", rdata)
         self.publisher.send_message(ROUTING_KEY_PARTICLE, mdata)
@@ -167,7 +177,6 @@ class ParticleFilterService:
     
     def read_simulation_state(self, ch, method, properties, message: dict):
         self._l.debug(f"Received mockup state message: {message}")
-        self.sim_msg_count += 1
 
         data = self.validate_state_message(message)
         if not data:
@@ -235,8 +244,10 @@ class ParticleFilterService:
 
             # Adjust the mockup queue by removing the first element that is received
             if self.first_mockup_item_popped  == False:
-                self.mockup_msg_queue.pop(0)
-                self.first_mockup_item_popped = True
+                # Check that the msg queue is not empty
+                if len(self.mockup_msg_queue) != 0:
+                    self.mockup_msg_queue.pop(0)
+                    self.first_mockup_item_popped = True
             
             # Get the first item from each of the queues if they are not empty
             if len(self.mockup_msg_queue) != 0 and len(self.sim_msg_queue) != 0:
@@ -262,6 +273,7 @@ class ParticleFilterService:
         self.mutex.acquire()
         self.sim_msg_queue = []
         self.mockup_msg_queue = []
+        self.q_target = []
         self.first_mockup_item_popped = False
         self.mutex.release()
     
@@ -270,6 +282,14 @@ class ParticleFilterService:
         pf_results = self.pf_estimates
         q_current = []
         qd_current = []
+
+        # Get the position values
+        for i in range(0, 6):
+            q_current.append(pf_results[i])
+        
+        # Get the speed values
+        for i in range(6, 12):
+            qd_current.append(pf_results[i])
 
         fields = {}
 
