@@ -9,7 +9,7 @@ class RobotPredictionNN:
     def __init__(self):
         # Instantiate the model
         self.model = LinearRegressionSingle()
-        self.prediction = None
+        self.prediction = []
 
     def setup(self, model_path):
         # Load the saved state dictionary into the model
