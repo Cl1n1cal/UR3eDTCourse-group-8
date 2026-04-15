@@ -13,6 +13,8 @@ from scipy.optimize import least_squares
 from utils.calculation_functions import se3_to_pos_rpy
 from utils.configuration import load_config
 import json
+from datetime import datetime
+
 
 class ParticleFilter:
     def __init__(self):
@@ -56,12 +58,12 @@ class ParticleFilter:
             "q_actual_3",
             "q_actual_4",
             "q_actual_5",
-            "tcp_pose_0",
-            "tcp_pose_1",
-            "tcp_pose_2",
-            "tcp_pose_3",
-            "tcp_pose_4",
-            "tcp_pose_5",
+            "qd_actual_0",
+            "qd_actual_1",
+            "qd_actual_2",
+            "qd_actual_3",
+            "qd_actual_4",
+            "qd_actual_5",
         ]))
         |> aggregateWindow(every: {window}, fn: last, createEmpty: true)
         |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
@@ -72,7 +74,7 @@ class ParticleFilter:
 
         data = []
         fields = [f"q_actual_{i}" for i in range(6)]
-        fields1 = [f"tcp_pose_{i}" for i in range(6)]
+        fields1 = [f"qd_actual_{i}" for i in range(6)]
 
         for table in tables:
             for record in table.records:
@@ -104,12 +106,12 @@ class ParticleFilter:
             "q_actual_3",
             "q_actual_4",
             "q_actual_5",
-            "tcp_pose_0",
-            "tcp_pose_1",
-            "tcp_pose_2",
-            "tcp_pose_3",
-            "tcp_pose_4",
-            "tcp_pose_5",
+            "qd_actual_0",
+            "qd_actual_1",
+            "qd_actual_2",
+            "qd_actual_3",
+            "qd_actual_4",
+            "qd_actual_5",
         ]))
         |> aggregateWindow(every: {window}, fn: last, createEmpty: true)
         |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
@@ -120,7 +122,7 @@ class ParticleFilter:
 
         data = []
         fields = [f"q_actual_{i}" for i in range(6)]
-        fields1 = [f"tcp_pose_{i}" for i in range(6)]
+        fields1 = [f"qd_actual_{i}" for i in range(6)]
 
         for table in tables:
             for record in table.records:
@@ -221,8 +223,16 @@ p_filter = ParticleFilter()
 config = load_config("startup/startup.conf")
 p_filter.setup(calibration_config=config["calibration_service"])
 
-start = "2026-04-09T09:19:10+02:00"
-stop = "2026-04-09T09:19:50+02:00"
+start = "2026-04-15T17:20:00+02:00"
+stop = "2026-04-15T17:20:40+02:00"
+
+# Parse ISO 8601 format directly
+dt_start = datetime.fromisoformat(start)
+dt_stop = datetime.fromisoformat(stop)
+
+# Already in ISO 8601 format, but can be used as-is
+start = dt_start.isoformat()
+stop = dt_stop.isoformat()
 
 sim_data = p_filter.get_simulation_values(start=start, stop=stop)
 mockup_data = p_filter.get_mockup_values(start=start, stop=stop)
