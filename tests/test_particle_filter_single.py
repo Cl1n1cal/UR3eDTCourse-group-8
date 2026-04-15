@@ -63,7 +63,7 @@ for i in range(len(mockup_q3)):
     # --- Particle Filter Update ---
     # 1. Motion Update: Particles drift slightly from simulation prediction
     process_noise = 0.02  # How much particles can deviate from sim
-    particles = np.random.normal(sim_val, process_noise, num_particles)
+    particles += np.random.normal(sim_val, process_noise, num_particles)
 
     # 2. Measurement Update: Weight particles based on mockup (noisy measurement)
     weights = np.exp(-0.5 * ((particles - mockup_val) / mockup_noise) ** 2)
