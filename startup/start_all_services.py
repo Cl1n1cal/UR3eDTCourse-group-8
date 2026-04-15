@@ -8,6 +8,7 @@ from startup.start_db_recorder_service import start_db_recorder_service
 from startup.start_mockup_state_publisher import start_mockup_state_publisher
 from startup.start_docker_influxdb import start_docker_influxdb
 from startup.start_calibration_service import start_calibration_service
+from startup.start_particle_filter_service import start_particle_filter_service
 from startup.utils.logging_config import setup_root_logging
 
 def signal_handler(sig, frame):
@@ -23,6 +24,7 @@ if __name__ == "__main__":
     start_as_daemon(start_robot_arm_mockup)
     start_as_daemon(start_sim_service)
     start_as_daemon(start_calibration_service)
+    start_as_daemon(start_particle_filter_service)
     
     # Keep the main process alive to handle signals
     try:
