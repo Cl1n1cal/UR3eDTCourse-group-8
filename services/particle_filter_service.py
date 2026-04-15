@@ -10,21 +10,56 @@ from communication.rabbitmq import Rabbitmq
 from communication.factory import RabbitMQFactory, ROUTING_KEY_PARTICLE, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_STATE, ROUTING_KEY_CTRL, ParticleFilterMsgKeys, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys, ROUTING_KEY_CALIBRATION
 from communication.protocol import unroll_list
 from startup.utils.logging_config import create_service_logger
+from nn_folder.classes.robot_prediction_nn import RobotPredictionNN
+
 
 class ParticleFilterService:
     def __init__(self, publish_period: float = 0.05, start_time: float = time.time()):
         self.publish_period = publish_period
-        self.consumer: Rabbitmq = RabbitMQFactory.create_rabbitmq()
+        self.consumer: Rabbitmq = RabbitMQFactory.create_rabbitmq() # TODO: Check if this runs with multiple threads internally
         self.publisher: Rabbitmq = RabbitMQFactory.create_rabbitmq()
+        self.nn_model: RobotPredictionNN = RobotPredictionNN() # Initialized in the setup function
         self.time = start_time
-        self.mockup_msg_count = 0
-        self.sim_msg_count = 0
-
-        # TODO: Initialize the nn with 1 layer
+        self.particle_filter_count = 0
         
+        # Could have used Python built in queues but they don't have a pretty reset function
+        self.mockup_msg_queue = []
+        self.sim_msg_queue = []
+        
+        self.use_local_mockup_time = False
+        self.start_time = 0.0
+        self.dead_mockup_time = 0.0
+        self.mutex = threading.Lock()
+        #self.event = threading.Event()
+        self.first_mockup_item_popped = False
+
+    def setup(self, particle_filter_config):
+        self._l.info("ParticleFilterService service setup with config ", particle_filter_config)
         self._l = create_service_logger("particle_filter_service")
+
+        # Create the nn
+        model_path = particle_filter_config["nn_model_path"]
+        self.nn_model.setup(model_path=model_path)
+        
+        # Connect rabbitmqs
+        self.publisher.connect_to_server()
+        self.consumer.connect_to_server()
+
+        # Subscribe to the simulation service
+        self.consumer.subscribe(routing_key=ROUTING_KEY_MODEL_STATE,
+                                on_message_callback=self.read_simulation_state)
+        
+        # Subscribe to the mockup
+        self.consumer.subscribe(routing_key=ROUTING_KEY_STATE,
+                                on_message_callback=self.read_mockup_state)
+        
+        # Subscribe to the ctrl messages. Will be used to keep track of the message counting logic by
+        # resetting the message counts when a new control message arrives
+        self.consumer.subscribe(routing_key=ROUTING_KEY_CTRL,
+                                on_message_callback=self.reset_msg_counter)
     
     def cleanup(self):
+        # Close rabbitmqs
         self.consumer.close()
         self.publisher.close()
 
@@ -36,17 +71,8 @@ class ParticleFilterService:
 
         self.publisher.send_message("robotarm.recorder.particle_filter", rdata)
         self.publisher.send_message(ROUTING_KEY_PARTICLE, mdata)
-        
-        
-    def load_program(self, q_end: np.ndarray, max_velocity: float, acceleration: float) -> None:
-        # Set the values in the robot model
-        self.robot_model.load_program(q_end, max_velocity, acceleration)
 
-
-    def read_calibration_message(self, ch, method, properties, message: dict):
-        self._l.info(f"Received calibration message, updating model's DH parameters: {message}")
-        self.robot_model.update_dh_parameters(d = message['d'], a =message['a'], alpha = message['alpha'])
-
+    # Check that the state message received from the mockup is a valid one
     def validate_state_message(self, message: dict) -> dict | None:
         required_keys = [
             RobotArmStateKeys.ROBOT_MODE,
@@ -73,14 +99,13 @@ class ParticleFilterService:
             msg_time = time.time()
         timestamp = datetime.fromtimestamp(msg_time, timezone.utc).isoformat()
         fields = {}
-        fields[RobotArmStateKeys.ROBOT_MODE] = data[RobotArmStateKeys.ROBOT_MODE]
-        fields[RobotArmStateKeys.JOINT_MAX_SPEED] = data[RobotArmStateKeys.JOINT_MAX_SPEED]
-        fields[RobotArmStateKeys.JOINT_MAX_ACCELERATION] = data[RobotArmStateKeys.JOINT_MAX_ACCELERATION]
+        # These might be useful later
+        #fields[RobotArmStateKeys.JOINT_MAX_SPEED] = data[RobotArmStateKeys.JOINT_MAX_SPEED]
+        #fields[RobotArmStateKeys.JOINT_MAX_ACCELERATION] = data[RobotArmStateKeys.JOINT_MAX_ACCELERATION]
 
         fields.update(unroll_list(RobotArmStateKeys.Q_ACTUAL, data[RobotArmStateKeys.Q_ACTUAL]))
         fields.update(unroll_list(RobotArmStateKeys.QD_ACTUAL, data[RobotArmStateKeys.QD_ACTUAL]))
         fields.update(unroll_list(RobotArmStateKeys.Q_TARGET, data[RobotArmStateKeys.Q_TARGET]))
-        fields.update(unroll_list(RobotArmStateKeys.TCP_POSE, data[RobotArmStateKeys.TCP_POSE]))
 
         rdata = {
             "measurement": "mockup_state",
@@ -93,15 +118,12 @@ class ParticleFilterService:
 
         return rdata
     
-    def calculate_next_values(self):
-        # TODO:
-        # 1. Have the nn inside of the class
-        # 2. Make a prediction with the nn
-        # 3. Return the result
+    def calculate_next_values(self, sim_measurement):
+        nn_result = self.nn_model.predict(sim_measurement)
+        return nn_result
 
     def read_mockup_state(self, ch, method, properties, message: dict):
         self._l.debug(f"Received mockup state message: {message}")
-        self.mockup_msg_count += 1
 
         data = self.validate_state_message(message)
         if not data:
@@ -114,7 +136,23 @@ class ParticleFilterService:
         #if self.use_local_mockup_time:
         #    self.check_for_dead_mockup(message)
 
-        msg = self.format_recorder_state_message(data)
+        # current pos, current vel are necessary for the partcile filter
+        # data also contains 'joint_max_speed' and 'joint_max_acceleration' in case they become necesarry
+        q_current = data[RobotArmStateKeys.Q_ACTUAL]
+        qd_current = data[RobotArmStateKeys.QD_ACTUAL]
+
+        # Append the values to a sinlge list, ready to be given to the nn.predict()
+        mockup_val = []
+        [mockup_val.append(pos) for pos in q_current]
+        [mockup_val.append(vel) for vel in qd_current]
+
+        # Acquire the mutex and update shared mockup msg count and queue
+        self.mutex.acquire()
+        self.mockup_msg_queue.append(mockup_val)
+        self.mutex.release()
+        
+        # Notify the particle_filter_thread
+        #self.event.set()
     
     def read_simulation_state(self, ch, method, properties, message: dict):
         self._l.debug(f"Received mockup state message: {message}")
@@ -131,32 +169,80 @@ class ParticleFilterService:
         #if self.use_local_mockup_time:
         #    self.check_for_dead_mockup(message)
 
+        # current pos, current vel and target pos are necessary for the nn
+        # data also contains 'joint_max_speed' and 'joint_max_acceleration' in case they become necesarry
+        q_current = data[RobotArmStateKeys.Q_ACTUAL]
+        qd_current = data[RobotArmStateKeys.QD_ACTUAL]
+        q_target = data[RobotArmStateKeys.Q_TARGET]
+
+        # Append the values to a sinlge list, ready to be given to the nn.predict()
+        sim_val = []
+        [sim_val.append(pos) for pos in q_current]
+        [sim_val.append(vel) for vel in qd_current]
+        [sim_val.append(target) for target in q_target]
 
 
-        msg = self.format_recorder_state_message(data)
+        # Acquire the mutex and update shared simulation msg count and queue
+        self.mutex.acquire()
+        self.sim_msg_queue.append(sim_val)
+        self.mutex.release()
 
+        # Notify the particle_filter_thread
+        #self.event.set()
+    
+    def particle_filter_calculation(self, nn_prediction, mockup_value):
+        pass
+
+      
+    # 1. Calculate next values
+    # 2. Use the mockup value to calculate with the particle filter
+    # 3. Publish the result
+    def particle_filter_thread(self):
+        # Wait for the event to be notified
+        #self.event.wait()
+
+        # Clear the event
+        #self.event.clear()
+
+        sim_val = None
+        mockup_val = None
+
+        # Lock the shared resources and check values
+        self.mutex.acquire()
+
+        # Adjust the mockup queue by removing the first element that is received
+        if self.first_mockup_item_popped  == False:
+            self.mockup_msg_queue.pop(0)
+            self.first_mockup_item_popped = True
+        
+        # Get the first item from each of the queues if they are not empty
+        if len(self.mockup_msg_queue) != 0 and len(self.sim_msg_queue) != 0:
+            sim_val = self.sim_msg_queue.pop(0)
+            mockup_val = self.mockup_msg_queue.pop(0)
+        
+        # Release the mutex before doing any further computation
+        self.mutex.release()
+
+        # Get the relevant data from the sim_val
+
+
+        # Use the nn to calculate the next position and velocity values
+        if sim_val != None and mockup_val != None:
+            self.nn_model.predict(sim_val)
+            prediction = self.nn_model.get_prediction()
+            particle_result = self.particle_filter_calculation(prediction, mockup_val)
+
+        # Calculate the next 
         # TODO: Possibly use 2 threads, one for each subscriber. Then use threads that block when the mockup value has not yet arrived
-        # 1. Calculate next values
-        # 2. Use the mockup value to calculate with the particle filter
-        # 3. Publish the result
+        
+        pass
 
 
     # Reset the message counter, ready for new state transitions
     def reset_msg_counter(self):
         self.mockup_msg_count = 0
         self.sim_msg_count = 0
-    
-    def setup(self, initial_q = [0.0,0.0,0.0,0.0,0.0,0.0], max_velocity = 0, max_acceleration = 0):
-        self._l.info("Setting up simulation service.")
-        self.robot_model.setup_initial_state(np.array(initial_q), max_velocity, max_acceleration)
-        self.publisher.connect_to_server()
-        self.consumer.connect_to_server()
-        self.consumer.subscribe(routing_key=ROUTING_KEY_MODEL_STATE,
-                                on_message_callback=self.read_simulation_state)
-        self.consumer.subscribe(routing_key=ROUTING_KEY_STATE,
-                                on_message_callback=self.read_mockup_state)
-        self.consumer.subscribe(routing_key=ROUTING_KEY_CTRL,
-                                on_message_callback=self.reset_msg_counter)
+        self.first_mockup_item_popped = False
     
     def start_serving(self):
         stop_event = threading.Event()
