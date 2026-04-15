@@ -10,6 +10,7 @@ packages = [
     { include = "models"},
     { include = "services"},
     { include = "utils"}
+    { include = "nn_folder"}
 ]
 
 [tool.poetry.dependencies]
