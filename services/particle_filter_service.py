@@ -21,6 +21,10 @@ class ParticleFilterService:
         self.nn_model: RobotPredictionNN = RobotPredictionNN() # Initialized in the setup function
         self.time = start_time
         self.particle_filter_count = 0
+        self.close_particle_filter_thread = False
+
+        # Create the thread for the particle filtering function. Started in the start_serving method. Joined in the cleanup function
+        self.particle_filter_thread = threading.Thread(target=self.particle_filter_thread_function, daemon=True)
         
         # Could have used Python built in queues but they don't have a pretty reset function
         self.mockup_msg_queue = []
@@ -30,8 +34,23 @@ class ParticleFilterService:
         self.start_time = 0.0
         self.dead_mockup_time = 0.0
         self.mutex = threading.Lock()
-        #self.event = threading.Event()
         self.first_mockup_item_popped = False
+
+        # Particle filter parameters
+        self.mockup_noise = 0.00003  # Standard deviation (m) taken from UR3e datasheet: https://www.universal-robots.com/media/1807464/ur3e_e-series_datasheets_web.pdf
+        self.num_particles = 5000
+        self.particles = []
+        self.weights = []
+
+        # Initialize the particle and weight lists (values are overwritten)
+        for i in range(12):
+            self.particles.append(np.random.normal(0, 2, self.num_particles))  # Initialize particles around 0
+            self.weights.append(np.ones(self.num_particles) / self.num_particles)  # Uniform weights
+
+        # Lists to store results
+        self.sim_positions = []
+        self.mockup_measurements = []
+        self.pf_estimates = []  # Particle filter estimated positions
 
     def setup(self, particle_filter_config):
         self._l.info("ParticleFilterService service setup with config ", particle_filter_config)
@@ -62,6 +81,7 @@ class ParticleFilterService:
         # Close rabbitmqs
         self.consumer.close()
         self.publisher.close()
+        self.particle_filter_thread.join()
 
     def upload_state(self):
         self._l.debug("Uploading state to RabbitMQ.")
@@ -129,13 +149,6 @@ class ParticleFilterService:
         if not data:
             return
         
-        #if self.is_first_message:
-        #    self.set_start_time(message)
-        #    self.is_first_message = False
-
-        #if self.use_local_mockup_time:
-        #    self.check_for_dead_mockup(message)
-
         # current pos, current vel are necessary for the partcile filter
         # data also contains 'joint_max_speed' and 'joint_max_acceleration' in case they become necesarry
         q_current = data[RobotArmStateKeys.Q_ACTUAL]
@@ -150,9 +163,7 @@ class ParticleFilterService:
         self.mutex.acquire()
         self.mockup_msg_queue.append(mockup_val)
         self.mutex.release()
-        
-        # Notify the particle_filter_thread
-        #self.event.set()
+    
     
     def read_simulation_state(self, ch, method, properties, message: dict):
         self._l.debug(f"Received mockup state message: {message}")
@@ -161,13 +172,6 @@ class ParticleFilterService:
         data = self.validate_state_message(message)
         if not data:
             return
-        
-        #if self.is_first_message:
-        #    self.set_start_time(message)
-        #    self.is_first_message = False
-
-        #if self.use_local_mockup_time:
-        #    self.check_for_dead_mockup(message)
 
         # current pos, current vel and target pos are necessary for the nn
         # data also contains 'joint_max_speed' and 'joint_max_acceleration' in case they become necesarry
@@ -186,56 +190,71 @@ class ParticleFilterService:
         self.mutex.acquire()
         self.sim_msg_queue.append(sim_val)
         self.mutex.release()
-
-        # Notify the particle_filter_thread
-        #self.event.set()
     
-    def particle_filter_calculation(self, nn_prediction, mockup_value):
-        pass
+    def particle_filter_calculation(self, nn_prediction_list, mockup_vals):
+        # For every joint and velocity
+        for j in range(12):
+            # --- Mockup Measurement (with Noise) ---
+            mockup_joint = mockup_vals[j]
+
+            # nn prediction
+            nn_prediction = nn_prediction_list[j]
+
+            # --- Particle Filter Update ---
+            # 1. Motion Update: Particles drift slightly from simulation prediction
+            self.particles[j] = nn_prediction + np.random.normal(0, 3, self.num_particles)  # Initialize particles around 0
+
+            # 2. Measurement Update: Weight particles based on mockup (noisy measurement)
+            self.weights[j] = np.exp(-0.5 * ((self.particles[j] - mockup_joint) / self.mockup_noise) ** 2)
+            self.weights[j] += 1e-300  # Avoid zeros
+            self.weights[j] /= np.sum(self.weights[j])  # Normalize weights
+
+            # 3. Resampling: Draw new particles based on weights
+            indices = np.random.choice(range(self.num_particles), size=self.num_particles, p=self.weights[j])
+            self.particles[j] = self.particles[j][indices]
+
+            # Store estimated position as the mean of particles
+            self.pf_estimates[j] = np.mean(self.particles[j])
 
       
     # 1. Calculate next values
     # 2. Use the mockup value to calculate with the particle filter
     # 3. Publish the result
-    def particle_filter_thread(self):
-        # Wait for the event to be notified
-        #self.event.wait()
+    def particle_filter_thread_function(self):
+        while True:
 
-        # Clear the event
-        #self.event.clear()
+            # Check if the thread should be closed
+            if self.close_particle_filter_thread:
+                break
 
-        sim_val = None
-        mockup_val = None
+            sim_vals = None
+            mockup_vals = None
 
-        # Lock the shared resources and check values
-        self.mutex.acquire()
+            # Lock the shared resources and check values
+            self.mutex.acquire()
 
-        # Adjust the mockup queue by removing the first element that is received
-        if self.first_mockup_item_popped  == False:
-            self.mockup_msg_queue.pop(0)
-            self.first_mockup_item_popped = True
-        
-        # Get the first item from each of the queues if they are not empty
-        if len(self.mockup_msg_queue) != 0 and len(self.sim_msg_queue) != 0:
-            sim_val = self.sim_msg_queue.pop(0)
-            mockup_val = self.mockup_msg_queue.pop(0)
-        
-        # Release the mutex before doing any further computation
-        self.mutex.release()
+            # Adjust the mockup queue by removing the first element that is received
+            if self.first_mockup_item_popped  == False:
+                self.mockup_msg_queue.pop(0)
+                self.first_mockup_item_popped = True
+            
+            # Get the first item from each of the queues if they are not empty
+            if len(self.mockup_msg_queue) != 0 and len(self.sim_msg_queue) != 0:
+                sim_vals = self.sim_msg_queue.pop(0)
+                mockup_vals = self.mockup_msg_queue.pop(0)
+            
+            # Release the mutex before doing any further computation
+            self.mutex.release()
 
-        # Get the relevant data from the sim_val
+            # Get the relevant data from the sim_val
 
 
-        # Use the nn to calculate the next position and velocity values
-        if sim_val != None and mockup_val != None:
-            self.nn_model.predict(sim_val)
-            prediction = self.nn_model.get_prediction()
-            particle_result = self.particle_filter_calculation(prediction, mockup_val)
-
-        # Calculate the next 
-        # TODO: Possibly use 2 threads, one for each subscriber. Then use threads that block when the mockup value has not yet arrived
-        
-        pass
+            # Use the nn to calculate the next position and velocity values
+            if sim_vals != None and mockup_vals != None:
+                self.nn_model.predict(sim_vals)
+                prediction_list = self.nn_model.get_prediction().tolist()
+                self.particle_filter_calculation(prediction_list, mockup_vals)
+                self.upload_state()
 
 
     # Reset the message counter, ready for new state transitions
@@ -246,43 +265,16 @@ class ParticleFilterService:
         self.first_mockup_item_popped = False
         self.mutex.release()
     
-    def start_serving(self):
-        stop_event = threading.Event()
-
-        def _sim_loop():
-            last_publish_time = time.time()
-            while not stop_event.is_set():
-                curr_time = time.time()
-                if curr_time - self.time >= self.step_size:
-                    self.step_simulation()
-
-                if curr_time - last_publish_time >= self.publish_period:
-                    self.upload_state()
-                    last_publish_time = curr_time
-
-        sim_thread = threading.Thread(target=_sim_loop, daemon=True)
-        sim_thread.start()
-
-        try:
-            self.consumer.start_consuming()
-        except KeyboardInterrupt:
-            self._l.info("Simulation stopped by user.")
-        finally:
-            stop_event.set()
-            self.cleanup()
-    
     def create_recorder_state_msg(self):
         timestamp = datetime.fromtimestamp(self.time, timezone.utc).isoformat()
+        pf_results = self.pf_estimates
+        q_current = []
+        qd_current = []
 
-        fields = {
-            ParticleFilterMsgKeys.ROBOT_MODE: self.robot_model.state,
-            ParticleFilterMsgKeys.JOINT_MAX_SPEED: math.degrees(self.robot_model.max_velocity),
-            ParticleFilterMsgKeys.JOINT_MAX_ACCELERATION: math.degrees(self.robot_model.max_acceleration),
-        }
+        fields = {}
 
-        fields.update(unroll_list(ParticleFilterMsgKeys.Q_ACTUAL, self.robot_model.get_q_current().tolist()))
-        fields.update(unroll_list(ParticleFilterMsgKeys.QD_ACTUAL, self.robot_model.get_qd_current().tolist()))
-        fields.update(unroll_list(ParticleFilterMsgKeys.Q_TARGET, self.robot_model.get_q_end().tolist()))
+        fields.update(unroll_list(ParticleFilterMsgKeys.Q_ACTUAL, q_current))
+        fields.update(unroll_list(ParticleFilterMsgKeys.QD_ACTUAL, qd_current))
 
         rdata = {
             "measurement": "particle_filter",
@@ -297,11 +289,34 @@ class ParticleFilterService:
 
     def create_state_msg(self):
         timestamp = datetime.fromtimestamp(self.time, timezone.utc).isoformat()
+        pf_results = self.pf_estimates
+        q_current = []
+        qd_current = []
+
+        # Get the position values
+        for i in range(0, 6):
+            q_current.append(pf_results[i])
+        
+        # Get the speed values
+        for i in range(6, 12):
+            qd_current.append(pf_results[i])
+
+        # Insert values into state message
         mdata = {
-            ParticleFilterMsgKeys.Q_ACTUAL: self.robot_model.get_q_current().tolist(),
-            ParticleFilterMsgKeys.QD_ACTUAL: self.robot_model.get_qd_current().tolist(),
-            ParticleFilterMsgKeys.Q_TARGET: self.robot_model.q_end.tolist(),
+            ParticleFilterMsgKeys.Q_ACTUAL: q_current,
+            ParticleFilterMsgKeys.QD_ACTUAL: qd_current,
             ParticleFilterMsgKeys.TIMESTAMP: timestamp,
         }
 
         return mdata
+    
+    def start_serving(self):
+        # Start the particle filter thread
+        self.particle_filter_thread.start()
+
+        try:
+            self.consumer.start_consuming()
+        except KeyboardInterrupt:
+            self._l.info("Particle filter stopped by user.")
+        finally:
+            self.cleanup()
