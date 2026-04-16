@@ -2,6 +2,8 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 from nn_folder.classes.robot_prediction_nn import RobotPredictionNN
+import torch
+import torch.nn as nn
 
 mockup_data = []
 sim_data = []
@@ -86,69 +88,103 @@ assert len(mockup_steps) == len(sim_steps), "Mockup joints and sim joints are no
 
 # Measurement noise parameters (GPS-like noise)
 # TODO: Find out if speed has the same insecurity
-mockup_noise = 0.00003  # Standard deviation (m) taken from UR3e datasheet: https://www.universal-robots.com/media/1807464/ur3e_e-series_datasheets_web.pdf
+mockup_noise = 0.04 #0.00003  # Standard deviation (m) taken from UR3e datasheet: https://www.universal-robots.com/media/1807464/ur3e_e-series_datasheets_web.pdf
 
-# Particle filter parameters
-num_particles = 5000
+# Particle filter
+#  parameters
+N = 100000
 #particles = np.random.normal(0, 2*np.pi, num_particles)  # Initialize particles around 0
 particles = []
 weights = []
 
+def wrap_to_pi(x):
+    return (x + np.pi) % (2 * np.pi) - np.pi
 # Create 12 particle and weight lists
-for i in range(12):
-    particles.append(np.random.normal(0, 2, num_particles))  # Initialize particles around 0
-    weights.append(np.ones(num_particles) / num_particles)  # Uniform weights
+mean = np.array(sim_steps[0])  # first timestep
+std  = np.array([0.1]*6 + [0.5]*6)
 
+particles = mean + std * np.random.randn(N, 12)
+particles[:, :6] = wrap_to_pi(particles[:, :6])
 # Lists to store results
 true_positions = []
 sim_positions = []
 mockup_measurements = []
 pf_estimates = []  # Particle filter estimated positions
 
+
+q_target = np.array([0, 0, np.pi/2, 0, -np.pi/2, 0])
+
+# Repeat for all particles
+#q_target_batch = q_target.unsqueeze(0).repeat(N, 1)  # (5000, 6)
+q_target_batch = np.tile(q_target, (N, 1))
+
+
+#joints = particles[:, 0:6]
+#velocities = particles[:, 6:12]
+
+#nn_input = np.concatenate([joints, velocities, q_target_batch], axis=1)
+
 # Particle Filter Process
 # For every step in total steps
-for i in range(len(mockup_steps)):
 
-    sim_step = sim_steps[i]
-    mockup_step = mockup_steps[i]
-    nn_input = nn_input_list[i]
+
+for i in range(len(sim_steps)):
+
+    # --------------------------
+    # 1. VECTORIZE STATE SPLIT
+    # --------------------------
+    joints = particles[:, 0:6]
+    velocities = particles[:, 6:12]
+
+    # --------------------------
+    # 2. BUILD NN INPUT (BATCH)
+    # --------------------------
+    nn_input = np.concatenate([joints, velocities, q_target_batch], axis=1)
+    nn_input = nn_input.astype(np.float32)
+
+    # --------------------------
+    # 3. NN PREDICTION (BATCH)
+    # --------------------------
     nn_model.predict(nn_input)
-    nn_prediction_list = nn_model.get_prediction().tolist()
+    pred = np.array(nn_model.get_prediction())
 
-    # For every joint and velocity
-    for j in range(12):
-        # --- Simulated Motion (Model with Drift) ---
-        
-        sim_joint = sim_step[j]
+    # --------------------------
+    # 4. ADD NOISE
+    # --------------------------
+    noise = np.random.normal(0, 0.22, (N, 12))
+    particles = pred + noise
 
-        # --- Mockup Measurement (with Noise) ---
-        mockup_joint = mockup_step[j]
+    # --------------------------
+    # 5. WRAP ANGLES
+    # --------------------------
+    particles[:, :6] = wrap_to_pi(particles[:, :6])
 
-        nn_prediction = nn_prediction_list[j]
+    # --------------------------
+    # 6. MEASUREMENT UPDATE
+    # --------------------------
+    measurement = np.array(mockup_steps[i])
 
-        # --- Particle Filter Update ---
-        # 1. Motion Update: Particles drift slightly from simulation prediction
-        process_noise = 0.02  # How much particles can deviate from sim
-        particles[j] = nn_prediction + np.random.normal(0, 3, num_particles)  # Initialize particles around 0
+    error = particles - measurement
 
-        # 2. Measurement Update: Weight particles based on mockup (noisy measurement)
-        weights[j] = np.exp(-0.5 * ((particles[j] - mockup_joint) / mockup_noise) ** 2)
-        weights[j] += 1e-300  # Avoid zeros
-        weights[j] /= np.sum(weights[j])  # Normalize weights
+    weights = np.exp(-0.5 * np.sum((error / mockup_noise)**2, axis=1))
+    weights += 1e-300
+    weights /= np.sum(weights)
 
-        # 3. Resampling: Draw new particles based on weights
-        indices = np.random.choice(range(num_particles), size=num_particles, p=weights[j])
-        particles[j] = particles[j][indices]
+    # --------------------------
+    # 7. RESAMPLING
+    # --------------------------
+    indices = np.random.choice(N, N, p=weights)
+    particles = particles[indices]
 
-        # Store estimated position as the mean of particles
-        pf_estimate = np.mean(particles[j])
+    # --------------------------
+    # 8. ESTIMATE
+    # --------------------------
+    estimate = np.mean(particles, axis=0)
 
-        # Store values
-        #true_positions.append(true_x)
-        if j == 3:
-            sim_positions.append(sim_joint)
-            mockup_measurements.append(mockup_joint)
-            pf_estimates.append(pf_estimate)
+    pf_estimates.append(estimate[3])
+    sim_positions.append(sim_steps[i][3])
+    mockup_measurements.append(mockup_steps[i][3])
+
 
 # Plot results
 plt.figure(figsize=(10, 5))
