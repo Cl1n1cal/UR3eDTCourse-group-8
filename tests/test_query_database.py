@@ -223,8 +223,8 @@ p_filter = ParticleFilter()
 config = load_config("startup/startup.conf")
 p_filter.setup(calibration_config=config["calibration_service"])
 
-start = "2026-04-15T17:20:00+02:00"
-stop = "2026-04-15T17:20:40+02:00"
+start = "2026-04-16T10:30:10+02:00"
+stop  = "2026-04-16T10:35:00+02:00"
 
 # Parse ISO 8601 format directly
 dt_start = datetime.fromisoformat(start)
