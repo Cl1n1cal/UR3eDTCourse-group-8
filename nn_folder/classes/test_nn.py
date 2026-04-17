@@ -11,7 +11,7 @@ class ModelType(Enum):
 class LinearRegressionSingle(nn.Module):
     def __init__(self):
         super(LinearRegressionSingle, self).__init__()
-        self.linear = nn.Linear(18, 12)  # 24 input features and 12 output
+        self.linear = nn.Linear(21, 12)  # 24 input features and 12 output
 
     def forward(self, x):
         return self.linear(x)
@@ -20,7 +20,7 @@ class LinearRegressionSingle(nn.Module):
         return "LinearRegressionSingle"
     
     def get_result_file_name(self) -> str:
-        return "model_single_results"
+        return "model_single_results_new"
 
 class LinearRegressionMulti(nn.Module):
     def __init__(self):
@@ -91,15 +91,15 @@ class RobotPredictionNN:
 if __name__ == "__main__":
     # Initialize the model
     model_path_multi = 'nn_folder/models/nn_model_multi_layer.pth'
-    model_path_single = 'nn_folder/models/nn_model_single_layer.pth'
-    model = RobotPredictionNN(model_path_multi, ModelType.MULTI)
+    model_path_single = 'nn_folder/models/nn_model_single_layer_new.pth'
+    model = RobotPredictionNN(model_path_single, ModelType.SINGLE)
     model_result_file_name = model.get_result_file_name()
 
     pos_err_list = []
     vel_err_list = []
     joint_err_list = [[] for _ in range(6)]
 
-    for q in range(0, 32):
+    for q in range(0, 21):
         print("q:", q)
         with open(f"nn_folder/nn_test_data/trajectories_{q}.json", "r") as file:
             data = json.load(file)
@@ -124,6 +124,9 @@ if __name__ == "__main__":
                 for i in range(6):
                     tmp_x.append(single_step[f"q_target_{i}"])
                 
+                tmp_x.append(single_step["max_vel"])
+                tmp_x.append(single_step["max_acc"])
+                tmp_x.append(single_step["time_step"])
                 x.append(tmp_x)
                 y.append(tmp_y)
             

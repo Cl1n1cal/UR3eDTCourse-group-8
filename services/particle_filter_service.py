@@ -23,6 +23,8 @@ class ParticleFilterService:
         self.step_size = 0.1
         self.time_stamp = start_time
         self.q_target = [] # TODO: Set the q_starget when a load program message arrives
+        self.max_vel = 0.0
+        self.max_acc = 0.0
         self.particle_filter_count = 0
         self.close_particle_filter_thread = False
         self._l = create_service_logger("particle_filter_service")
@@ -43,7 +45,8 @@ class ParticleFilterService:
         self.first_mockup_item_popped = False
 
         # Particle filter parameters
-        self.mockup_noise = 0.04  # Standard deviation (m) taken from UR3e datasheet: https://www.universal-robots.com/media/1807464/ur3e_e-series_datasheets_web.pdf
+        # mockup_noise was 0.04
+        self.mockup_noise = 0.5  # Standard deviation (m) taken from UR3e datasheet: https://www.universal-robots.com/media/1807464/ur3e_e-series_datasheets_web.pdf
         self.N = 100000
         self.particles = []
         self.weights = []
@@ -154,6 +157,8 @@ class ParticleFilterService:
         q_current = data[RobotArmStateKeys.Q_ACTUAL]
         qd_current = data[RobotArmStateKeys.QD_ACTUAL]
         q_target = data[RobotArmStateKeys.Q_TARGET]
+        max_vel = data[RobotArmStateKeys.JOINT_MAX_SPEED]
+        max_acc = data[RobotArmStateKeys.JOINT_MAX_ACCELERATION]
 
         # Append the values to a sinlge list, ready to be given to the nn.predict()
         mockup_val = []
@@ -164,6 +169,8 @@ class ParticleFilterService:
         self.mutex.acquire()
         self.mockup_msg_queue.append(mockup_val)
         self.q_target = q_target
+        self.max_vel = max_vel
+        self.max_acc = max_acc
         self.mutex.release()
         self.event.set()
     
@@ -189,6 +196,8 @@ class ParticleFilterService:
                 else:
                     mockup_step = self.mockup_msg_queue.pop()
                     q_target = self.q_target.copy()
+                    max_vel = self.max_vel
+                    max_acc = self.max_acc
                     self.time_stamp = self.time_stamp + self.step_size
                     time_stamp = self.time_stamp
             finally:
@@ -196,8 +205,12 @@ class ParticleFilterService:
                 time.sleep(0.01)
 
             if mockup_step != None:
-                # Vectorize q_target
+                # Turn max vel, max acc and step size into a list
+                constraints = [max_vel, max_acc, self.step_size]
+
+                # Vectorize q_target and constraints list
                 q_target_batch = np.tile(q_target, (self.N, 1))
+                contraints_batch = np.tile(constraints, (self.N, 1))
 
                 # --------------------------
                 # 1. VECTORIZE STATE SPLIT
@@ -208,7 +221,7 @@ class ParticleFilterService:
                 # --------------------------
                 # 2. BUILD NN INPUT (BATCH)
                 # --------------------------
-                nn_input = np.concatenate([joints, velocities, q_target_batch], axis=1)
+                nn_input = np.concatenate([joints, velocities, q_target_batch, contraints_batch], axis=1)
                 nn_input = nn_input.astype(np.float32)
 
                 # --------------------------
@@ -220,6 +233,7 @@ class ParticleFilterService:
                 # --------------------------
                 # 4. ADD NOISE
                 # --------------------------
+                # 0.22
                 noise = np.random.normal(0, 0.22, (self.N, 12))
                 self.particles = pred + noise
 

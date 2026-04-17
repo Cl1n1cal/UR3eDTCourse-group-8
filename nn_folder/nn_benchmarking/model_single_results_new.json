@@ -1,0 +1,14 @@
+{
+    "LinearRegressionSingle": {
+        "avg_pos_err:": "0.0412 r",
+        "med_pos_err:": "0.0412 r",
+        "avg_vel_err:": "0.0077 deg/s",
+        "med_vel_err:": "0.0077 deg/s",
+        "q_0_avg_pos_err:": "0.0346 r",
+        "q_1_avg_pos_err:": "0.0476 r",
+        "q_2_avg_pos_err:": "0.0732 r",
+        "q_3_avg_pos_err:": "0.0437 r",
+        "q_4_avg_pos_err:": "0.0291 r",
+        "q_5_avg_pos_err:": "0.0188 r"
+    }
+}

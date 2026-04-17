@@ -4,11 +4,12 @@ import json
 import numpy as np
 from enum import Enum
 from nn_folder.classes.linear_regression_single import LinearRegressionSingle
+from nn_folder.classes.linear_regression_multiple import LinearRegressionMulti
 
 class RobotPredictionNN:
     def __init__(self):
         # Instantiate the model
-        self.model = LinearRegressionSingle()
+        self.model = LinearRegressionMulti()
         self.prediction = []
 
     def setup(self, model_path):
