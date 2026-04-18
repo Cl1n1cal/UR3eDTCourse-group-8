@@ -3,7 +3,7 @@ import json
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from nn_folder.classes.linear_regression_multiple import LinearRegressionMulti
+from nn_folder.classes.linear_regression_multi import LinearRegressionMulti
 from nn_folder.classes.linear_regression_single import LinearRegressionSingle
 from torch.utils.data import TensorDataset, DataLoader
 
