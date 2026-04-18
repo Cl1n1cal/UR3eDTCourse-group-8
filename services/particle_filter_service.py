@@ -9,6 +9,7 @@ from communication.protocol import unroll_list, ROUTING_KEY_RECORDER
 from startup.utils.logging_config import create_service_logger
 from nn_folder.classes.robot_prediction_nn import RobotPredictionNN
 
+UPDATE_COUNT = 10
 
 class ParticleFilterService:
     def __init__(self, publish_period: float = 0.05, start_time: float = time.time()):
@@ -24,7 +25,7 @@ class ParticleFilterService:
         self.close_particle_filter_thread = False
         self._l = create_service_logger("particle_filter_service")
         self.event = threading.Event() # Used to signal the particle_filter_thread_function when the first mockup value arrives
-        self.update_time_counter = 20 # 20 makes the service update the timer in the first iteration
+        self.update_time_counter = UPDATE_COUNT # UPDATE_COUNT makes the service update the timer in the first iteration. See update_time method.
 
         # Create the thread for the particle filtering function. Started in the start_serving method. Joined in the cleanup function
         self.particle_filter_thread = threading.Thread(target=self.particle_filter_thread_function, daemon=True)
@@ -40,7 +41,7 @@ class ParticleFilterService:
         self.first_mockup_item_popped = False
 
         # Particle filter elements
-        self.mockup_noise = 0.01
+        self.mockup_noise = 0.02
         self.N = 100000 # Number of particles
         self.particles = []
         self.weights = []
@@ -165,7 +166,7 @@ class ParticleFilterService:
     def particle_filter_thread_function(self):
         self.event.wait()
         mean = np.array(self.mockup_msg_queue.pop())
-        std = np.array([0.1]*6 + [0.5]*6)
+        std = np.array([0.1]*6 + [0.1]*6)
 
         self.particles = mean + std * np.random.randn(self.N, 12)
 
@@ -219,7 +220,7 @@ class ParticleFilterService:
                 # 4. ADD NOISE
                 # --------------------------
                 # 0.22
-                noise = np.random.normal(0, 0.03, (self.N, 12))
+                noise = np.random.normal(0, 0.05, (self.N, 12))
                 self.particles = pred + noise
 
                 # --------------------------
@@ -311,7 +312,7 @@ class ParticleFilterService:
             self.cleanup()
 
     def update_time(self, ch, method, properties, message: dict):
-        if self.update_time_counter == 20:
+        if self.update_time_counter == UPDATE_COUNT:
             self.update_time_counter = 0
 
             time_stamp = message["time"]
