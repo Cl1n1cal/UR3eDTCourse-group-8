@@ -2,12 +2,9 @@ import logging
 import numpy as np
 import time
 from datetime import datetime, timezone
-import math
 import threading
-from utils.calculation_functions import se3_to_pos_rpy
-from models.robot_model import RobotModel
 from communication.rabbitmq import Rabbitmq
-from communication.factory import RabbitMQFactory, ROUTING_KEY_PARTICLE, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_STATE, ROUTING_KEY_CTRL, ParticleFilterMsgKeys, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys, ROUTING_KEY_CALIBRATION
+from communication.factory import RabbitMQFactory, ROUTING_KEY_PARTICLE, ROUTING_KEY_STATE, ParticleFilterMsgKeys, RobotArmStateKeys
 from communication.protocol import unroll_list, ROUTING_KEY_RECORDER
 from startup.utils.logging_config import create_service_logger
 from nn_folder.classes.robot_prediction_nn import RobotPredictionNN
@@ -16,20 +13,18 @@ from nn_folder.classes.robot_prediction_nn import RobotPredictionNN
 class ParticleFilterService:
     def __init__(self, publish_period: float = 0.05, start_time: float = time.time()):
         self.publish_period = publish_period
-        self.consumer: Rabbitmq = RabbitMQFactory.create_rabbitmq() # TODO: Check if this runs with multiple threads internally
+        self.consumer: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.publisher: Rabbitmq = RabbitMQFactory.create_rabbitmq()
         self.nn_model: RobotPredictionNN = RobotPredictionNN() # Initialized in the setup function
-        self.time = start_time
-        self.step_size = 0.1
+        self.step_size = 0.1 # Can be overwritten by the setup function
         self.time_stamp = start_time
-        self.q_target = [] # TODO: Set the q_starget when a load program message arrives
+        self.q_target = []
         self.max_vel = 0.0
         self.max_acc = 0.0
-        self.particle_filter_count = 0
         self.close_particle_filter_thread = False
         self._l = create_service_logger("particle_filter_service")
-        self.event = threading.Event()
-        self.update_time_counter = 30
+        self.event = threading.Event() # Used to signal the particle_filter_thread_function when the first mockup value arrives
+        self.update_time_counter = 20 # 20 makes the service update the timer in the first iteration
 
         # Create the thread for the particle filtering function. Started in the start_serving method. Joined in the cleanup function
         self.particle_filter_thread = threading.Thread(target=self.particle_filter_thread_function, daemon=True)
@@ -44,10 +39,9 @@ class ParticleFilterService:
         self.mutex = threading.Lock()
         self.first_mockup_item_popped = False
 
-        # Particle filter parameters
-        # mockup_noise was 0.04
-        self.mockup_noise = 0.03  # Standard deviation (m) taken from UR3e datasheet: https://www.universal-robots.com/media/1807464/ur3e_e-series_datasheets_web.pdf
-        self.N = 100000
+        # Particle filter elements
+        self.mockup_noise = 0.01
+        self.N = 100000 # Number of particles
         self.particles = []
         self.weights = []
         self.pf_estimates = []
@@ -72,23 +66,15 @@ class ParticleFilterService:
         
         self.consumer.subscribe(routing_key=ROUTING_KEY_RECORDER,
                                 on_message_callback=self.update_time)
-        
-        #self.consumer.subscribe(routing_key=ROUTING_KEY_MODEL_STATE,
-        #                        on_message_callback=self.read_sim_state)
-        
-    def wrap_to_pi(self, x):
-        return (x + np.pi) % (2 * np.pi) - np.pi
     
+    # Close rabbitmqs amd join the particle filter thread
     def cleanup(self):
-        # Close rabbitmqs
         self.consumer.close()
         self.publisher.close()
         self.particle_filter_thread.join()
 
     def upload_state(self, time_stamp):
         self._l.debug("Uploading state to RabbitMQ.")
-
-        self.time += self.step_size
 
         rdata = self.create_recorder_state_msg(time_stamp)
         mdata = self.create_state_msg(time_stamp)
@@ -262,8 +248,6 @@ class ParticleFilterService:
 
     
     def create_recorder_state_msg(self, time_stamp):
-        #timestamp = datetime.fromtimestamp(self.time, timezone.utc).isoformat()
-
         pf_results = self.pf_estimates
         q_current = []
         qd_current = []
@@ -280,7 +264,6 @@ class ParticleFilterService:
 
         fields.update(unroll_list(ParticleFilterMsgKeys.Q_ACTUAL, q_current))
         fields.update(unroll_list(ParticleFilterMsgKeys.QD_ACTUAL, qd_current))
-
 
         rdata = {
             "measurement": "particle_filter",
@@ -327,11 +310,8 @@ class ParticleFilterService:
         finally:
             self.cleanup()
 
-    #def read_sim_state(self, ch, method, properties, message: dict):
-    #    print("got sim msg:", message)
-
     def update_time(self, ch, method, properties, message: dict):
-        if self.update_time_counter == 30:
+        if self.update_time_counter == 20:
             self.update_time_counter = 0
 
             time_stamp = message["time"]
@@ -347,31 +327,3 @@ class ParticleFilterService:
                 self.mutex.release()
         else:
             self.update_time_counter += 1
-
-"""
-    def read_simulation_state(self, ch, method, properties, message: dict):
-        self._l.debug(f"Received mockup state message: {message}")
-
-        data = self.validate_state_message(message)
-        if not data:
-            return
-
-        # current pos, current vel and target pos are necessary for the nn
-        # data also contains 'joint_max_speed' and 'joint_max_acceleration' in case they become necesarry
-        q_current = data[RobotArmStateKeys.Q_ACTUAL]
-        qd_current = data[RobotArmStateKeys.QD_ACTUAL]
-        q_target = data[RobotArmStateKeys.Q_TARGET]
-
-        # Append the values to a sinlge list, ready to be given to the nn.predict()
-        sim_val = []
-        [sim_val.append(pos) for pos in q_current]
-        [sim_val.append(vel) for vel in qd_current]
-        [sim_val.append(target) for target in q_target]
-
-
-        # Acquire the mutex and update shared simulation msg count and queue
-        self.mutex.acquire()
-        self.sim_msg_queue.append(sim_val)
-        self.mutex.release()
-
-"""
