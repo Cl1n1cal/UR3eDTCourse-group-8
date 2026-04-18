@@ -5,6 +5,9 @@ import torch.nn as nn
 import torch.optim as optim
 from nn_folder.classes.linear_regression_multiple import LinearRegressionMulti
 from nn_folder.classes.linear_regression_single import LinearRegressionSingle
+from torch.utils.data import TensorDataset, DataLoader
+
+
 
 
 # Initialize the model and define the loss function (Mean Squared Error)
@@ -12,9 +15,8 @@ model = LinearRegressionMulti()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("cuda available:", torch.cuda.is_available())
 model = model.to(device) 
-learning_rate = 0.01
+learning_rate = 0.001
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-num_epochs = 200  # Number of epochs to train
 
 # Define the loss function (Mean Squared Error)
 loss_fn = nn.MSELoss()
@@ -23,11 +25,11 @@ loss_fn = nn.MSELoss()
 data = None
 
 
-traj_count = 40
+traj_count = 94
+input_steps = []
+output_steps = []
 for q in range(traj_count):
-    traj_list_input = []
-    traj_list_output = []
-
+    print(f"Loading traj: {q} of {traj_count}")
     with open(f"nn_folder/nn_training_data/trajectories_{q}.json", "r") as file:
         data = json.load(file)
 
@@ -62,46 +64,35 @@ for q in range(traj_count):
             traj_x.append(step_x)
             traj_y.append(step_y)
         
-        traj_list_input.append(traj_x)
-        traj_list_output.append(traj_y)
+        for i in range(len(traj_x) - 1):
+            input_steps.append(traj_x[i])
+            output_steps.append(traj_y[i+1])
 
 
-    assert len(traj_list_input) == len(traj_list_output), "Traj_list_input and traj_list_output are not the same length"
 
-    for i in range(len(traj_list_input)):
-        traj_list_input[i] = traj_list_input[i][0:-1]  # Get all but the last element of every trajectory
-        traj_list_output[i] = traj_list_output[i][1::] # Get all but the first element of every trajectory
-        assert len(traj_list_input[i]) == len(traj_list_output[i]), "Traj input and traj output are not the same length"
+all_inputs = input_steps
+all_outputs = output_steps
 
+assert len(all_inputs) == len(all_outputs), "Inputs and outputs are not the same length"
 
-#print("len x:", len(x))
-#print("len y:", len(y))
-#print("X_train", X_train)
-#print("Y_train", Y_train)
+X_all = torch.tensor(all_inputs).float()
+Y_all = torch.tensor(all_outputs).float()
+X_all = X_all.to(device)
+Y_all = Y_all.to(device)
 
-# TODO: Convert to correct float and also recreate training data with rads instead of degs
+dataset = TensorDataset(X_all, Y_all)
+loader = DataLoader(dataset, batch_size=512, shuffle=True)
 
-# Training loop
+num_epochs = 200  # Number of epochs to train
+for epoch in range(num_epochs):
+    epoch_loss = 0
+    for X_batch, Y_batch in loader:
+        optimizer.zero_grad()
+        loss = loss_fn(model(X_batch), Y_batch)
+        loss.backward()
+        optimizer.step()
+        epoch_loss += loss.item()
+    print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss/len(loader):.6f}")
 
-    for i in range(len(traj_list_input)):
-        if i % 100 == 0:
-            print(f"pct. trough traj {q} of {traj_count}: {round((i/len(traj_list_input))*100, 2)}")
-
-        X_train = torch.tensor(traj_list_input[i]).float()
-        Y_train = torch.tensor(traj_list_output[i]).float()
-        X_train = X_train.to(device)
-        Y_train = Y_train.to(device)
-
-        for epoch in range(num_epochs):
-            optimizer.zero_grad()  # Zero out gradients
-            outputs = model(X_train)  # Forward pass
-            loss = loss_fn(outputs, Y_train)  # Compute the loss
-            loss.backward()  # Backpropagation
-            
-            optimizer.step()  # Update model parameters
-
-            # Print loss periodically for monitoring
-            #if (epoch + 1) % 100 == 0:
-            #    print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f}')
 
 torch.save(model.state_dict(), 'nn_folder/models/nn_model_multi_layer_new.pth')

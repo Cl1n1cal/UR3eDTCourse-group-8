@@ -1,16 +1,10 @@
 import numpy as np
 import random
-import math
 import json
-import roboticstoolbox as rtb
 from models.robot_model import RobotModel
-from communication.protocol import unroll_list
-from communication.factory import RabbitMQFactory, ROUTING_KEY_PARTICLE, ROUTING_KEY_CTRL, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys, ROUTING_KEY_CALIBRATION
 
-# Factorial growth
+# Grows with combo of velocities and accelerations as well
 sample_count = 300
-
-rng = np.random.default_rng()
 
 def generate_movement(n_moving, sample_count, from_list, to_list):
     for _ in range(sample_count):
@@ -26,44 +20,17 @@ def generate_movement(n_moving, sample_count, from_list, to_list):
 from_pos = []
 target_pos = []
 
-for n in range(1, 7):
-    generate_movement(n, sample_count, from_pos, target_pos)
+# more samples for single joint
+generate_movement(1, 800, from_pos, target_pos)  
+generate_movement(2, 300, from_pos, target_pos)
+generate_movement(3, 300, from_pos, target_pos)
+generate_movement(4, 300, from_pos, target_pos)
+generate_movement(5, 300, from_pos, target_pos)
+generate_movement(6, 300, from_pos, target_pos)
+
 
 assert len(from_pos) == len(target_pos), "From pos and target pos are not the same length"
 
-#index = 17501
-#print(f"From: {from_pos[index]}\nTarget: {target_pos[index]}")
-
-# Inputs: Current joint pos, current joint vels, target joint vels
-# Outputs: Next joint vels, next joint pos
-
-# Create random vel and acc values
-"""
-velocities = []
-accelerations = []
-for i in range(velocity_count):
-    # Rounded to integer, ensure minimum of 1
-    tmp = max(3, round(random.uniform(10, 60)))
-    if tmp > 0.0:
-        #tmp = np.deg2rad(tmp)
-        velocities.append(tmp)
-
-    # make sure that acc is smaller than vel and at least 1
-    acc_val = max(1, round(random.uniform(1, tmp - 1)))
-    if acc_val > 0.0:
-        #acc_val = np.deg2rad(acc_val)
-        accelerations.append(acc_val)
-
-assert len(velocities) == len(accelerations), "Velocities and accelerations are not the same length"
-
-for vel in velocities:
-    if vel <= 0.0:
-        raise Exception("Vel was < 0.0")
-    
-for acc in accelerations:
-    if acc < 0.0:
-        raise Exception("Acc was < 0.0")
-"""
 velocities_deg = [10, 20, 40, 70, 100, 130, 160, 180]   # deg/s
 accelerations_deg = [5, 10, 20, 40, 70, 100, 130, 160]  # deg/s²
 
@@ -83,7 +50,7 @@ data = {}
 
 # Generate a trajectory for all of the velocities and acceleration and for all the different positions
 traj_counter = 0
-file_counter = 29
+file_counter = 0
 for h in range(len(combos)):
     print(f"h:{h} of {len(combos)}")
     for k in range(len(from_pos)):
@@ -115,14 +82,6 @@ for h in range(len(combos)):
         max_vel = combos[h][0]
         max_acc = combos[h][1]
 
-        """
-        for i in range(len(traj_qd)):
-            vels = traj_qd[i]
-            for j in range(len(vels)):
-                vels[j] = round(vels[j], 4)
-
-        """
-
         trajectory = {}
         steps = {}
         joints = {}
@@ -149,12 +108,6 @@ for h in range(len(combos)):
 
             steps[f"step_{i}"] = joints
             joints = {}
-
-
-
-
-        #trajectory["traj_q"] = traj_q.tolist()
-        #trajectory["traj_qd"] = traj_qd.tolist()
 
         data[f"Trajectory_{traj_counter}"] = steps
         steps = {}
