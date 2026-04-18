@@ -4,7 +4,7 @@ import json
 import numpy as np
 from enum import Enum
 from nn_folder.classes.linear_regression_single import LinearRegressionSingle
-from nn_folder.classes.linear_regression_multiple import LinearRegressionMulti
+from nn_folder.classes.linear_regression_multi import LinearRegressionMulti
 
 class RobotPredictionNN:
     def __init__(self):
@@ -26,7 +26,7 @@ class RobotPredictionNN:
 
         # Make the prediction with the neural network
         with torch.no_grad():  # No need to compute gradients during inference
-            self.prediction = self.model(nn_input) #.item()
+            self.prediction = self.model(nn_input)
     
     def get_prediction(self):
         return self.prediction
