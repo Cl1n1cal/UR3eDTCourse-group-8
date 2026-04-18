@@ -20,7 +20,7 @@ robot_model = RobotModel(step_size=time_step, d=dh_params['d'], a=dh_params['a']
 
 # Robot model requires nd array
 q_start = np.array([0, 0, 0, 0, 0, 0])
-q_end = np.array([0, 0, 0, np.pi/2, 0, 0])
+q_end = np.array([0, 0, 0, 2*np.pi, 0, 0])
 
 # NN requires lists
 #q_start_list = q_start.tolist()

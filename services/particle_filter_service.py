@@ -46,7 +46,7 @@ class ParticleFilterService:
 
         # Particle filter parameters
         # mockup_noise was 0.04
-        self.mockup_noise = 0.5  # Standard deviation (m) taken from UR3e datasheet: https://www.universal-robots.com/media/1807464/ur3e_e-series_datasheets_web.pdf
+        self.mockup_noise = 0.03  # Standard deviation (m) taken from UR3e datasheet: https://www.universal-robots.com/media/1807464/ur3e_e-series_datasheets_web.pdf
         self.N = 100000
         self.particles = []
         self.weights = []
@@ -157,8 +157,8 @@ class ParticleFilterService:
         q_current = data[RobotArmStateKeys.Q_ACTUAL]
         qd_current = data[RobotArmStateKeys.QD_ACTUAL]
         q_target = data[RobotArmStateKeys.Q_TARGET]
-        max_vel = data[RobotArmStateKeys.JOINT_MAX_SPEED]
-        max_acc = data[RobotArmStateKeys.JOINT_MAX_ACCELERATION]
+        max_vel = np.deg2rad(data[RobotArmStateKeys.JOINT_MAX_SPEED]) # convert to rads for the nn
+        max_acc = np.deg2rad(data[RobotArmStateKeys.JOINT_MAX_ACCELERATION]) # convert to rads for the nn
 
         # Append the values to a sinlge list, ready to be given to the nn.predict()
         mockup_val = []
@@ -182,7 +182,6 @@ class ParticleFilterService:
         std = np.array([0.1]*6 + [0.5]*6)
 
         self.particles = mean + std * np.random.randn(self.N, 12)
-        self.particles[:, :6] = self.wrap_to_pi(self.particles[:, :6])
 
         while True:
             # Check if the thread should be closed
@@ -234,13 +233,8 @@ class ParticleFilterService:
                 # 4. ADD NOISE
                 # --------------------------
                 # 0.22
-                noise = np.random.normal(0, 0.22, (self.N, 12))
+                noise = np.random.normal(0, 0.03, (self.N, 12))
                 self.particles = pred + noise
-
-                # --------------------------
-                # 5. WRAP ANGLES
-                # --------------------------
-                self.particles[:, :6] = self.wrap_to_pi(self.particles[:, :6])
 
                 # --------------------------
                 # 6. MEASUREMENT UPDATE
