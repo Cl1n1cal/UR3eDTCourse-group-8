@@ -8,6 +8,7 @@ ROUTING_KEY_MODEL_STATE = "robotarm.model.state"
 ROUTING_KEY_CTRL = "robotarm.ctrl"
 ROUTING_KEY_RECORDER = "robotarm.recorder.#"
 ROUTING_KEY_CALIBRATION = "robotarm.model.calibration"
+ROUTING_KEY_IK = "robotarm.ctrl.ik"
 
 ### MESSAGES
 class CtrlMsgFields:
@@ -18,6 +19,7 @@ class CtrlMsgFields:
     PAUSE = "pause"
     STOP = "stop"
     INJECT_FAULT = "inject_fault"
+    LOAD_IK_PROGRAM = "load_ik_program"
 
 
 class CtrlMsgKeys:

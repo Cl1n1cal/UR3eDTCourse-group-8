@@ -72,9 +72,9 @@ class CommandSender:
                     routing_key=protocol.ROUTING_KEY_CTRL,
                     message=msg
             )
-            print(f"✓ Control message: {msg} sent successfully")
+            self._l.info(f"Control message: {msg} sent successfully")
         except Exception as e:
-            print(f"✗ Failed to send control message: {e}")
+            self._l.error(f"Failed to send control message: {e}")
 
 
 class CommandSenderUI(ctk.CTk):
