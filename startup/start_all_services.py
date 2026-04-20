@@ -1,5 +1,6 @@
 import signal
 import sys
+from startup.start_monitoring_service import start_monitoring_service
 from startup.utils.start_as_daemon import start_as_daemon
 from startup.start_docker_rabbitmq import start_docker_rabbitmq
 from startup.start_sim_service import start_sim_service
@@ -25,6 +26,7 @@ if __name__ == "__main__":
     start_as_daemon(start_robot_arm_mockup)
     start_as_daemon(start_sim_service)
     start_as_daemon(start_calibration_service)
+    start_as_daemon(start_monitoring_service)
     start_as_daemon(start_command_sender)
     start_as_daemon(start_visualization_service)
     

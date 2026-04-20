@@ -41,6 +41,11 @@ LOGGING_CONFIG = {
             'level': 'INFO',
             'handlers': [],
             'propagate': True
+        },
+        'monitoring_service': {
+            'level': 'DEBUG',
+            'handlers': [],
+            'propagate': True
         }
     },
     'root': {

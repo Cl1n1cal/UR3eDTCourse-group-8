@@ -15,6 +15,7 @@ class CommandSender:
         self.rabbitmq.connect_to_server()
 
     def send_load_program_command(self, position, vel, acc):
+        self._l.info(f"Sending load program command with position: {position}, velocity: {vel}, acceleration: {acc}")
         # Construct control message for loading a program
         msg = {
             protocol.CtrlMsgKeys.TYPE: protocol.CtrlMsgFields.LOAD_PROGRAM,
@@ -25,6 +26,7 @@ class CommandSender:
         self.send_control_message(msg)
     
     def send_play_command(self):
+        self._l.info("Sending play command")
         # send control message for starting program
         msg_start = {
             protocol.CtrlMsgKeys.TYPE: protocol.CtrlMsgFields.PLAY,
@@ -32,6 +34,7 @@ class CommandSender:
         self.send_control_message(msg_start)
 
     def send_pause_command(self):
+        self._l.info("Sending pause command")
         # send control message for pausing program
         msg_pause = {
             protocol.CtrlMsgKeys.TYPE: protocol.CtrlMsgFields.PAUSE,
@@ -39,6 +42,7 @@ class CommandSender:
         self.send_control_message(msg_pause)
 
     def send_stop_command(self):
+        self._l.info("Sending stop command")
         # send control message for stopping program
         msg_stop = {
             protocol.CtrlMsgKeys.TYPE: protocol.CtrlMsgFields.STOP,
@@ -46,6 +50,7 @@ class CommandSender:
         self.send_control_message(msg_stop)
     
     def send_stuck_joint_command(self, joint_indexs):
+        self._l.info(f"Sending stuck joint command for joints: {joint_indexs}")
         # send control message for simulating a stuck joint
         msg_stuck = {
             protocol.CtrlMsgKeys.TYPE: protocol.CtrlMsgFields.INJECT_FAULT,
@@ -55,6 +60,7 @@ class CommandSender:
         self.send_control_message(msg_stuck)
 
     def send_wear_command(self, joint_indexs, wear_level, duration):
+        self._l.info(f"Sending wear command for joints: {joint_indexs} with wear level: {wear_level} and duration: {duration}")
         # send control message for simulating wear
         msg_wear = {
             protocol.CtrlMsgKeys.TYPE: protocol.CtrlMsgFields.INJECT_FAULT,
