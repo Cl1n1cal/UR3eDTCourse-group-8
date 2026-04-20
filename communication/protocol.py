@@ -20,6 +20,7 @@ class CtrlMsgFields:
     STOP = "stop"
     INJECT_FAULT = "inject_fault"
     LOAD_IK_PROGRAM = "load_ik_program"
+    CALIBRATE_DH_PARAMETERS = "calibrate_dh_parameters"
 
 
 class CtrlMsgKeys:
@@ -33,6 +34,10 @@ class CtrlMsgKeys:
     FAULT_VALUE = "fault_value"
     JOINTS = "joints"
     DURATION = "duration"
+    TARGET_POSE = "target_pose"
+    D = "d"
+    A = "a"
+    ALPHA = "alpha"
 
 
 class FaultTypes:

@@ -1,12 +1,13 @@
 from influxdb_client.client.influxdb_client import InfluxDBClient
 from startup.utils.logging_config import create_service_logger
-from communication.factory import RabbitMQFactory, ROUTING_KEY_CALIBRATION
+from communication.factory import RabbitMQFactory
 import logging
 import time
 import numpy as np
 from models.robot_model import create_robot
 from scipy.optimize import least_squares
 from utils.calculation_functions import se3_to_pos_rpy
+from communication.protocol import ROUTING_KEY_CALIBRATION, CtrlMsgKeys, CtrlMsgFields
 
 class CalibrationService:
     def __init__(self):
@@ -92,11 +93,11 @@ class CalibrationService:
             self.rabbitmq.send_message(ROUTING_KEY_CALIBRATION, self.create_calibration_message())
 
     def create_calibration_message(self):
+        msg = { CtrlMsgKeys.TYPE: CtrlMsgFields.CALIBRATE_DH_PARAMETERS,
+                CtrlMsgKeys.D: self.dh_guess[0:6].tolist(),
+                CtrlMsgKeys.A: self.dh_guess[6:12].tolist(),
+                CtrlMsgKeys.ALPHA: self.dh_guess[12:18].tolist()}
 
-        msg = {'d':self.dh_guess[0:6].tolist(), 
-               'a':self.dh_guess[6:12].tolist(), 
-               'alpha':self.dh_guess[12:18].tolist()}
-        
         return msg
     
     def estimate_dh_parameters(self):

@@ -61,7 +61,15 @@ class SimulationService:
 
     def read_calibration_message(self, ch, method, properties, message: dict):
         self._l.info(f"Received calibration message, updating model's DH parameters: {message}")
-        self.robot_model.update_dh_parameters(d = message['d'], a =message['a'], alpha = message['alpha'])
+        if message.get(CtrlMsgKeys.TYPE) == CtrlMsgFields.CALIBRATE_DH_PARAMETERS:
+            d = message.get(CtrlMsgKeys.D)
+            a = message.get(CtrlMsgKeys.A)
+            alpha = message.get(CtrlMsgKeys.ALPHA)
+        #check if all parameters are present
+            if d is None or a is None or alpha is None:
+                self._l.error("Calibration message missing required DH parameters.")
+                return
+            self.robot_model.update_dh_parameters(d = d, a = a, alpha = alpha)
 
     def step_simulation(self):
         self.time += self.step_size
