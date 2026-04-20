@@ -6,6 +6,8 @@ import roboticstoolbox as rtb
 import spatialmath as sm
 from spatialmath import SE3
 from spatialmath.base import transl, rpy2tr
+from utils.calculation_functions import se3_to_pos_rpy, pos_rpy_to_se3
+import numpy as np
 
 class InverseKinematicsService:
     def __init__(self, inverse_kinematics_config):
@@ -22,18 +24,17 @@ class InverseKinematicsService:
                                 on_message_callback=self.read_control_message)
 
     def compute_inverse_kinematics(self, target_pose: list[float]):
+        self._l.info(f"Computing inverse kinematics for target pose:\n{target_pose}")
         #convert target pose to SE3 object if it's not already
         # If you already have tcp = [x, y, z, roll, pitch, yaw]
         xyz = target_pose[:3]
         rpy = target_pose[3:]
 
         # Rebuild SE3 pose from translation + rotation transform matrices
-        T = transl(xyz[0], xyz[1], xyz[2]) @ rpy2tr(rpy[0], rpy[1], rpy[2], order='xyz')
-        matrix_pose = SE3(T)
+        matrix_pose = pos_rpy_to_se3(np.array(target_pose))
         # Solve IK
-        sol = self.robot.ikine_LM(matrix_pose)
+        sol = self.robot.ikine_LM(matrix_pose)  # Full pose IK with all joints free
 
-        self._l.info(f"Computing inverse kinematics for target pose:\n{target_pose}")
         if sol.success:
             self._l.info(f"Found Joint Solution: {sol.q}")
             q_check = self.robot.fkine(sol.q)

@@ -41,6 +41,11 @@ LOGGING_CONFIG = {
             'level': 'INFO',
             'handlers': [],
             'propagate': True
+        },
+        'inverse_kinematics': {
+            'level': 'DEBUG',
+            'handlers': [],
+            'propagate': True
         }
     },
     'root': {

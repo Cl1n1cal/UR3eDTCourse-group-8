@@ -138,3 +138,9 @@ def se3_to_pos_rpy(se3: SE3):
     tcp_rpy = se3.rpy(order='xyz')
     tcp_xyz = se3.t
     return np.hstack((tcp_xyz, tcp_rpy))
+
+def pos_rpy_to_se3(pos_rpy: np.ndarray):
+    xyz = pos_rpy[:3]
+    rpy = pos_rpy[3:]
+    T = SE3(xyz[0], xyz[1], xyz[2]) * SE3.Rx(rpy[2]) * SE3.Ry(rpy[1]) * SE3.Rz(rpy[0])
+    return SE3(T)
