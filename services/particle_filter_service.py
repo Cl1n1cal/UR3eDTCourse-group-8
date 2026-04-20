@@ -41,7 +41,7 @@ class ParticleFilterService:
         self.first_mockup_item_popped = False
 
         # Particle filter elements
-        self.mockup_noise = 0.02
+        self.mockup_noise = 0.03
         self.N = 100000 # Number of particles
         self.particles = []
         self.weights = []
@@ -166,7 +166,7 @@ class ParticleFilterService:
     def particle_filter_thread_function(self):
         self.event.wait()
         mean = np.array(self.mockup_msg_queue.pop())
-        std = np.array([0.1]*6 + [0.1]*6)
+        std = np.array([0.03]*6 + [0.03]*6)
 
         self.particles = mean + std * np.random.randn(self.N, 12)
 
@@ -174,21 +174,22 @@ class ParticleFilterService:
             # Check if the thread should be closed
             if self.close_particle_filter_thread:
                 break
-    
+
+            # drain stale messages, keep only most recent
             self.mutex.acquire()
-            try:
-                if len(self.mockup_msg_queue) == 0:
-                    mockup_step = None
-                else:
-                    mockup_step = self.mockup_msg_queue.pop()
-                    q_target = self.q_target.copy()
-                    max_vel = self.max_vel
-                    max_acc = self.max_acc
-                    self.time_stamp = self.time_stamp + self.step_size
-                    time_stamp = self.time_stamp
-            finally:
-                self.mutex.release()
-                time.sleep(0.01)
+            while len(self.mockup_msg_queue) > 1:
+                self.mockup_msg_queue.pop()
+            if len(self.mockup_msg_queue) == 0:
+                mockup_step = None
+            else:
+                mockup_step = self.mockup_msg_queue.pop()
+                q_target = self.q_target.copy()
+                max_vel = self.max_vel
+                max_acc = self.max_acc
+                self.time_stamp = self.time_stamp + self.step_size
+                time_stamp = self.time_stamp
+ 
+            self.mutex.release()
 
             if mockup_step != None:
                 # Turn max vel, max acc and step size into a list
@@ -220,7 +221,7 @@ class ParticleFilterService:
                 # 4. ADD NOISE
                 # --------------------------
                 # 0.22
-                noise = np.random.normal(0, 0.05, (self.N, 12))
+                noise = np.random.normal(0, 0.03, (self.N, 12))
                 self.particles = pred + noise
 
                 # --------------------------
@@ -235,15 +236,15 @@ class ParticleFilterService:
                 weights /= np.sum(weights)
 
                 # --------------------------
-                # 7. RESAMPLING
+                # 7. ESTIMATE
+                # --------------------------
+                self.pf_estimates = np.sum(weights[:, np.newaxis] * self.particles, axis=0)
+
+                # --------------------------
+                # 8. RESAMPLING
                 # --------------------------
                 indices = np.random.choice(self.N, self.N, p=weights)
                 self.particles = self.particles[indices]
-
-                # --------------------------
-                # 8. ESTIMATE
-                # --------------------------
-                self.pf_estimates = np.mean(self.particles, axis=0)
                 time_stamp = datetime.fromtimestamp(time_stamp, timezone.utc).isoformat()
                 self.upload_state(time_stamp=time_stamp)
 
