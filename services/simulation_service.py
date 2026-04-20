@@ -60,7 +60,7 @@ class SimulationService:
                 self._l.warning(f"Unknown control message type: {msg_type}")
 
     def read_calibration_message(self, ch, method, properties, message: dict):
-        self._l.info(f"Received calibration message, updating model's DH parameters: {message}")
+        self._l.debug(f"Received calibration message, updating model's DH parameters: {message}")
         if message.get(CtrlMsgKeys.TYPE) == CtrlMsgFields.CALIBRATE_DH_PARAMETERS:
             d = message.get(CtrlMsgKeys.D)
             a = message.get(CtrlMsgKeys.A)
