@@ -72,8 +72,10 @@ class MonitoringService:
         # get robot arm state history from influx db
         data = self.get_historical_data()
         robustness = self.compute_robustness(data)
+        if robustness is None:
+            return
         self._l.debug(f"Computed robustness: {robustness}")
-        self.upload_robustness(robustness)
+        self.record_message(self.create_robustness_msg(robustness, "q_diff_robustness"))
         
     def get_historical_data(self):
         query = f'''
@@ -119,6 +121,12 @@ class MonitoringService:
         if self._monitor is None:
             raise RuntimeError("Monitor is not initialized. Call start_monitoring() first.")
 
+        required_measurements = ("mockup_state", "simulation_state")
+        missing_measurements = [name for name in required_measurements if name not in sample_data]
+        if missing_measurements:
+            self._l.debug(f"Skipping robustness computation, missing measurements: {missing_measurements}")
+            return None
+
         # calculate difference between mockup and sim values for q_actual
         error = sum((sample_data["mockup_state"][f"q_actual_{i}"] - sample_data["simulation_state"][f"q_actual_{i}"])**2 for i in range(6))**0.5
         self._l.debug(f"Calculated eucledian distance between mockup and sim q_actual values: {error}")
@@ -155,9 +163,3 @@ class MonitoringService:
 
         return records
     
-    def upload_robustness(self, robustness):
-        self._l.debug("Uploading robustness data to RabbitMQ.")
-
-        rdata = self.create_robustness_msg(robustness, "q_diff_robustness")
-
-        self.rabbitmq.send_message("robotarm.recorder.monitoring", rdata)
