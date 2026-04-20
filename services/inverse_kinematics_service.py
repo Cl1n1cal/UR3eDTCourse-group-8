@@ -71,19 +71,12 @@ class InverseKinematicsService:
     
     def read_control_message(self, ch, method, properties, message: dict):
         self._l.info(f"Received control message: {message}")
-        msg_type = message.get(protocol.CtrlMsgKeys.TYPE)
-        
-        match msg_type:
-            case protocol.CtrlMsgFields.LOAD_PROGRAM:
-                q_end = np.array(message.get(protocol.CtrlMsgKeys.JOINT_POSITIONS, [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])[0], dtype=float)
-                max_velocity = math.radians(message.get(protocol.CtrlMsgKeys.MAX_VELOCITY, 0.0))
-                acceleration = math.radians(message.get(protocol.CtrlMsgKeys.ACCELERATION, 0.0))
-                self.load_program(q_end, max_velocity, acceleration)
-            case protocol.CtrlMsgFields.PLAY:
-                self.robot_model.play()
-            case protocol.CtrlMsgFields.PAUSE:
-                self.robot_model.pause()
-            case protocol.CtrlMsgFields.STOP:
-                self.robot_model.stop()
-            case _:
-                self._l.warning(f"Unknown control message type: {msg_type}")
+        if message.get(protocol.CtrlMsgKeys.TYPE) == protocol.CtrlMsgFields.LOAD_IK_PROGRAM:
+            target_pose = message.get(protocol.CtrlMsgKeys.TARGET_POSE)
+            vel = message.get(protocol.CtrlMsgKeys.MAX_VELOCITY, 80)  # Default velocity if not provided
+            acc = message.get(protocol.CtrlMsgKeys.ACCELERATION, 60)  # Default acceleration if not provided
+            if target_pose is None:
+                self._l.error("Control message missing required target pose.")
+                return
+            ik_solution = self.compute_inverse_kinematics(target_pose)
+            self.send_load_program_command(ik_solution, vel=vel, acc=acc)
