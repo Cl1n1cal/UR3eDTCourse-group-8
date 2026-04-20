@@ -40,6 +40,7 @@ class InverseKinematicsService:
             self._l.debug(f"Check Pose:\n{q_check.t}")
         else:
             self._l.warning("Failed to find joint solution.")
+            return None
 
         return sol.q
 
@@ -91,6 +92,9 @@ class InverseKinematicsService:
                 self._l.error("Control message missing required target pose.")
                 return
             ik_solution = self.compute_inverse_kinematics(target_pose)
+            if ik_solution is None:
+                self._l.error("Failed to compute inverse kinematics.")
+                return
             self.send_load_program_command(ik_solution, vel=vel, acc=acc)
     
     def start_serving(self):

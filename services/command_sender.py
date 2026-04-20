@@ -64,12 +64,22 @@ class CommandSender:
             protocol.CtrlMsgKeys.DURATION: duration,
         }
         self.send_control_message(msg_wear)
+    
+    def send_load_ik_program_command(self, target_pose, vel, acc):
+        # Construct control message for loading an IK program
+        msg = {
+            protocol.CtrlMsgKeys.TYPE: protocol.CtrlMsgFields.LOAD_IK_PROGRAM,
+            protocol.CtrlMsgKeys.TARGET_POSE: [float(x) for x in target_pose],
+            protocol.CtrlMsgKeys.MAX_VELOCITY: vel,
+            protocol.CtrlMsgKeys.ACCELERATION: acc,
+        }
+        self.send_control_message(msg, routing_key=protocol.ROUTING_KEY_IK)
 
-    def send_control_message(self, msg):
+    def send_control_message(self, msg, routing_key=protocol.ROUTING_KEY_CTRL):
         """Send a control message to the UR3e Mockup via RabbitMQ."""
         try:
             self.rabbitmq.send_message(
-                    routing_key=protocol.ROUTING_KEY_CTRL,
+                    routing_key=routing_key,
                     message=msg
             )
             self._l.info(f"Control message: {msg} sent successfully")
@@ -84,8 +94,8 @@ class CommandSenderUI(ctk.CTk):
         self.sender = CommandSender()
 
         self.title("UR3e Command Sender")
-        self.geometry("980x800")
-        self.minsize(920, 800)
+        self.geometry("980x1060")
+        self.minsize(980, 1060)
 
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
@@ -93,6 +103,8 @@ class CommandSenderUI(ctk.CTk):
         self.grid_columnconfigure(0, weight=1)
         self.joint_position_sliders = []
         self.joint_position_value_labels = []
+        self.tcp_pose_sliders = []
+        self.tcp_pose_value_labels = []
 
         container = ctk.CTkFrame(self)
         container.grid(row=0, column=0, padx=16, pady=16, sticky="nsew")
@@ -173,15 +185,60 @@ class CommandSenderUI(ctk.CTk):
         self.load_acc_entry.insert(0, "60")
         self.load_acc_entry.grid(row=1, column=0, padx=8, pady=(0, 6), sticky="ew")
 
+        # LOAD IK PROGRAM
+        load_ik_btn = ctk.CTkButton(
+            container,
+            text="Load IK Program",
+            command=self._on_load_ik_program,
+            width=160,
+        )
+        load_ik_btn.grid(row=4, column=0, padx=12, pady=(8, 6), sticky="nw")
+
+        tcp_frame = ctk.CTkFrame(container)
+        tcp_frame.grid(row=4, column=1, columnspan=3, padx=(6, 12), pady=(8, 6), sticky="ew")
+        tcp_frame.grid_columnconfigure(1, weight=1)
+
+        tcp_label = ctk.CTkLabel(tcp_frame, text="TCP pose sliders [x, y, z, roll, pitch, yaw]")
+        tcp_label.grid(row=0, column=0, columnspan=3, padx=10, pady=(8, 4), sticky="w")
+
+        tcp_axes = [
+            ("X (m)", -1.0, 1.0, 0.0, 400),
+            ("Y (m)", -1.0, 1.0, 0.0, 400),
+            ("Z (m)", -1.0, 1.0, 0.2, 400),
+            ("Roll (rad)", -math.pi, math.pi, 0.0, 400),
+            ("Pitch (rad)", -math.pi, math.pi, 0.0, 400),
+            ("Yaw (rad)", -math.pi, math.pi, 0.0, 400),
+        ]
+
+        for idx, (label, min_value, max_value, default_value, steps) in enumerate(tcp_axes):
+            axis_label = ctk.CTkLabel(tcp_frame, text=label)
+            axis_label.grid(row=idx + 1, column=0, padx=(10, 6), pady=4, sticky="w")
+
+            slider = ctk.CTkSlider(
+                tcp_frame,
+                from_=min_value,  # type: ignore[arg-type]
+                to=max_value,  # type: ignore[arg-type]
+                number_of_steps=steps,
+                command=lambda val, i=idx: self._update_tcp_pose_label(i, val),
+            )
+            slider.set(default_value)
+            slider.grid(row=idx + 1, column=1, padx=6, pady=4, sticky="ew")
+
+            value_label = ctk.CTkLabel(tcp_frame, text=f"{default_value:.3f}")
+            value_label.grid(row=idx + 1, column=2, padx=(6, 10), pady=4, sticky="e")
+
+            self.tcp_pose_sliders.append(slider)
+            self.tcp_pose_value_labels.append(value_label)
+
         # PLAY / PAUSE / STOP
         play_btn = ctk.CTkButton(container, text="Play", command=self._on_play, width=160)
-        play_btn.grid(row=4, column=0, padx=12, pady=8, sticky="w")
+        play_btn.grid(row=5, column=0, padx=12, pady=8, sticky="w")
 
         pause_btn = ctk.CTkButton(container, text="Pause", command=self._on_pause, width=160)
-        pause_btn.grid(row=5, column=0, padx=12, pady=8, sticky="w")
+        pause_btn.grid(row=6, column=0, padx=12, pady=8, sticky="w")
 
         stop_btn = ctk.CTkButton(container, text="Stop", command=self._on_stop, width=160)
-        stop_btn.grid(row=6, column=0, padx=12, pady=8, sticky="w")
+        stop_btn.grid(row=7, column=0, padx=12, pady=8, sticky="w")
 
         # STUCK JOINT
         stuck_btn = ctk.CTkButton(
@@ -190,10 +247,10 @@ class CommandSenderUI(ctk.CTk):
             command=self._on_stuck_joint,
             width=160,
         )
-        stuck_btn.grid(row=7, column=0, padx=12, pady=8, sticky="w")
+        stuck_btn.grid(row=8, column=0, padx=12, pady=8, sticky="w")
 
         stuck_joints_frame = ctk.CTkFrame(container)
-        stuck_joints_frame.grid(row=7, column=1, padx=6, pady=8, sticky="w")
+        stuck_joints_frame.grid(row=8, column=1, padx=6, pady=8, sticky="w")
 
         stuck_label = ctk.CTkLabel(stuck_joints_frame, text="Joints")
         stuck_label.grid(row=0, column=0, columnspan=6, padx=3, pady=(4, 0), sticky="w")
@@ -219,10 +276,10 @@ class CommandSenderUI(ctk.CTk):
             command=self._on_wear,
             width=160,
         )
-        wear_btn.grid(row=8, column=0, padx=12, pady=(8, 12), sticky="w")
+        wear_btn.grid(row=9, column=0, padx=12, pady=(8, 12), sticky="w")
 
         wear_joints_frame = ctk.CTkFrame(container)
-        wear_joints_frame.grid(row=8, column=1, padx=6, pady=(8, 12), sticky="w")
+        wear_joints_frame.grid(row=9, column=1, padx=6, pady=(8, 12), sticky="w")
 
         wear_joints_label = ctk.CTkLabel(wear_joints_frame, text="Joints")
         wear_joints_label.grid(row=0, column=0, columnspan=6, padx=3, pady=(4, 0), sticky="w")
@@ -242,7 +299,7 @@ class CommandSenderUI(ctk.CTk):
             self.wear_joint_vars.append(joint_var)
 
         wear_slider_frame = ctk.CTkFrame(container)
-        wear_slider_frame.grid(row=8, column=2, padx=6, pady=(8, 12), sticky="ew")
+        wear_slider_frame.grid(row=9, column=2, padx=6, pady=(8, 12), sticky="ew")
         wear_slider_frame.grid_columnconfigure(0, weight=1)
 
         wear_level_label = ctk.CTkLabel(wear_slider_frame, text="Wear Level")
@@ -262,7 +319,7 @@ class CommandSenderUI(ctk.CTk):
         self.wear_level_value.grid(row=1, column=1, padx=(0, 8), pady=(0, 8))
 
         duration_frame = ctk.CTkFrame(container)
-        duration_frame.grid(row=8, column=3, padx=12, pady=(8, 12), sticky="ew")
+        duration_frame.grid(row=9, column=3, padx=12, pady=(8, 12), sticky="ew")
         duration_frame.grid_columnconfigure(0, weight=1)
 
         duration_label = ctk.CTkLabel(duration_frame, text="Duration (s)")
@@ -285,6 +342,9 @@ class CommandSenderUI(ctk.CTk):
     def _update_position_label(self, idx, value):
         self.joint_position_value_labels[idx].configure(text=f"{value:.3f}")
 
+    def _update_tcp_pose_label(self, idx, value):
+        self.tcp_pose_value_labels[idx].configure(text=f"{value:.3f}")
+
     def _update_wear_label(self, value):
         self.wear_level_value.configure(text=f"{value:.2f}")
 
@@ -298,6 +358,15 @@ class CommandSenderUI(ctk.CTk):
             vel = float(self.load_vel_entry.get())
             acc = float(self.load_acc_entry.get())
             self.sender.send_load_program_command(position, vel, acc)
+        except Exception as e:
+            messagebox.showerror("Input Error", str(e))
+
+    def _on_load_ik_program(self):
+        try:
+            target_pose = [slider.get() for slider in self.tcp_pose_sliders]
+            vel = float(self.load_vel_entry.get())
+            acc = float(self.load_acc_entry.get())
+            self.sender.send_load_ik_program_command(target_pose, vel, acc)
         except Exception as e:
             messagebox.showerror("Input Error", str(e))
 
