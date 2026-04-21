@@ -111,13 +111,22 @@ class MonitoringService:
         time.sleep(10) # Let the mockup initialize
         while True:
             time.sleep(self.milliseconds_to_seconds(self.sample_delay)) # time.sleep takes seconds as parameter
+            
+            # mockup latency
             time_stamp = time.time()
             last_mockup_data = self.get_last_data("mockup_state")
             mockup_latency_robustness = self.compute_latency_robustness(last_mockup_data, "mockup_state", time_stamp)
 
+            # sim latency
             time_stamp = time.time()
             last_sim_data = self.get_last_data("simulation_state")
             sim_latency_robustness = self.compute_latency_robustness(last_sim_data, "simulation_state", time_stamp)
+
+            # mockup velocity
+            time_stamp = time.time()
+            mockup_data = self.get_historical_data("mockup_state") # Retrieves a list of dicts
+            
+
             if mockup_latency_robustness is None or sim_latency_robustness is None:
                 self._l.debug(f"Robustness was none")
                 continue
@@ -126,41 +135,43 @@ class MonitoringService:
             print("mockup latency robustness:", mockup_latency_robustness)
             print("sim latency robustness", sim_latency_robustness)
 
-    def get_historical_data(self):
+    def get_historical_data(self, measurement: str):
         query = f'''
         from(bucket: "{self.influxdb_bucket}")
         |> range(start: -5s, stop: -{self.sample_delay}ms)
-        |> filter(fn: (r) => r._measurement == "mockup_state" or r._measurement == "simulation_state")
+        |> filter(fn: (r) => r._measurement == "{measurement}")
         |> filter(fn: (r) => contains(value: r._field, set: [
-            "q_actual_0","q_actual_1","q_actual_2","q_actual_3","q_actual_4","q_actual_5",
+            "joint_max_acceleration","joint_max_speed","q_actual_0","q_actual_1","q_actual_2","q_actual_3","q_actual_4","q_actual_5",
             "qd_actual_0","qd_actual_1","qd_actual_2","qd_actual_3","qd_actual_4","qd_actual_5",
             "tcp_pose_0","tcp_pose_1","tcp_pose_2","tcp_pose_3","tcp_pose_4","tcp_pose_5",
-            "robot_mode",
+            "robot_mode" 
         ]))
         |> group(columns: ["_measurement", "_field"])
-        |> last()
         |> pivot(rowKey: ["_time", "_measurement"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["time_stamp", "measurement"])
+        |> sort(columns: ["_time"])
         '''
         tables = self.query_api.query(query, org=self.influx_db_org)
 
-        data = {}
+        data = []
         fields = [f"q_actual_{i}" for i in range(6)]
         fields1 = [f"tcp_pose_{i}" for i in range(6)]
         fields2 = [f"qd_actual_{i}" for i in range(6)]
         fields3 = ["robot_mode"]
+        fields4 = ["joint_max_speed"]
+        fields5 = ["joint_max_acceleration"]
 
         for table in tables:
             for record in table.records:
-                key = record.get_measurement()
                 entry = {
                     "time_stamp": record.get_time().timestamp(),
                     **{field: record.values.get(field) for field in fields},
                     **{field: record.values.get(field) for field in fields1},
                     **{field: record.values.get(field) for field in fields2},
-                    **{field: record.values.get(field) for field in fields3}
+                    **{field: record.values.get(field) for field in fields3},
+                    **{field: record.values.get(field) for field in fields4},
+                    **{field: record.values.get(field) for field in fields5}
                 }
-                data[key] = entry
+                data.append(entry)
 
         self._l.debug(f"Retrieved a historical sample from InfluxDB: {data}.")
         
