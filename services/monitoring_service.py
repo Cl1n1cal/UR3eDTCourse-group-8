@@ -19,6 +19,8 @@ class MonitoringService:
         self._monitor = None
         self._mockup_latency_monitor = None
         self._sim_latency_monitor = None
+        self._monitor_latency_monitor = None
+        self._monitor_max_latency = 0 # conf file
         self.max_latency = 0 # conf file
         self._max_error = 0.1
         self._min_error = -0.1
@@ -26,6 +28,7 @@ class MonitoringService:
         self._mockup_latency_formula = "(time_diff <= $max_latency)"
         self._velocity_formula = "G[0, 4.5](qd_ratio <= 1.0)"
         self._acceleration_formula = "G[0, 4.5](qdd_ratio <= 1.0)"
+        self._monitor_latency_formula = "time_diff < $monitor_max_latency"
 
         self._velocity_monitor = None
         self._velocity_spec = None
@@ -43,6 +46,8 @@ class MonitoringService:
         self.influxdb_bucket = monitoring_config["bucket"]
         self.sample_delay = monitoring_config["sample_delay"]
         self.max_latency = monitoring_config["max_latency"]
+        self._monitor_max_latency = monitoring_config["monitor_max_latency"]
+
 
         #self.rabbitmq.subscribe(routing_key=ROUTING_KEY_STATE,
         #                on_message_callback=self.process_state_sample)
@@ -65,6 +70,15 @@ class MonitoringService:
             formula=mockup_latency_spec, semantics="DelayedQuantitative", variables=mockup_latency_vars
         )
         self._l.info(f"Monitoring service initialized with monitor: {self._mockup_latency_monitor}")
+
+        # Monitor service latency monitor
+        monitor_latency_vars = mstlo.Variables()
+        monitor_latency_vars.set("monitor_max_latency", self._monitor_max_latency)
+        monitor_latency_spec = mstlo.parse_formula(self._monitor_latency_formula)
+        self._monitor_latency_monitor = mstlo.Monitor(
+            formula=monitor_latency_spec, semantics="DelayedQuantitative", variables=monitor_latency_vars
+        )
+        self._l.info(f"Monitoring service initialized with monitor: {self._monitor_latency_monitor}")
 
         # Velocity monitor. Uses None for synchronization so we don't interpolate values between the records.
         # We are assuming that records are written often enough and have to input a fake value at time stamp 4.5 so we cannot interpolate
@@ -123,23 +137,26 @@ class MonitoringService:
         while True:
             time.sleep(self.milliseconds_to_seconds(self.sample_delay)) # time.sleep takes seconds as parameter
             
-            # mockup latency
+            # Mockup latency
             time_stamp = time.time()
             last_mockup_data = self.get_last_data("mockup_state")
             mockup_latency_robustness = self.compute_latency_robustness(last_mockup_data, "mockup_state", time_stamp)
 
-            # sim latency
+            # Sim latency
             time_stamp = time.time()
             last_sim_data = self.get_last_data("simulation_state")
             sim_latency_robustness = self.compute_latency_robustness(last_sim_data, "simulation_state", time_stamp)
 
-            # mockup velocity
+            # Mockup velocity
             #time_stamp = time.time()
             mockup_data = self.get_historical_data("mockup_state") # Retrieves a list of dicts
             mockup_velocity_robustness = self.compute_mockup_velocity_robustness(mockup_data)
 
-            # mockup acceleration
+            # Mockup acceleration
             mockup_acceleration_robustness = self.compute_mockup_acceleration_robustness(mockup_data)
+
+            # Monitor latency
+            monitor_latency_robustness = self.compute_monitor_latency_robustness()
             
 
             if mockup_latency_robustness is None or sim_latency_robustness is None:
@@ -151,6 +168,25 @@ class MonitoringService:
             print("sim latency robustness", sim_latency_robustness)
             print("mockup velocity robustness", mockup_velocity_robustness)
             print("mockup acceleration robustness", mockup_acceleration_robustness)
+            print("monitor latency robustness", monitor_latency_robustness)
+
+            # Update the time stamp - used by the monitor latency monitor
+            self.time_stamp = time.time()
+    
+
+    # Could be changed to query the database for the last time the monitor service wrote to the db
+    def compute_monitor_latency_robustness(self):
+        tmp_time = time.time()
+        time_diff = tmp_time - self.time_stamp
+
+        monitor_latency_robustness = self._monitor_latency_monitor.update(
+            signal="time_diff", value=time_diff, timestamp=tmp_time
+        )
+
+        return monitor_latency_robustness.verdicts()
+
+
+
 
     def compute_mockup_velocity_robustness(self, mockup_data):
 
