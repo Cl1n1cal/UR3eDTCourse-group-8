@@ -24,6 +24,11 @@ class MonitoringService:
         self._min_error = -0.1
         self._spec_formula = "(q_diff < $max_error && q_diff > $min_error)"
         self._mockup_latency_formula = "(time_diff <= $max_latency)"
+        self._velocity_formula = "G[0, 4.5](qd_ratio <= 1.0)"
+        self._acceleration_formula = "G[0, 4.5](qdd_ratio <= 1.0)"
+
+        self._velocity_monitor = None
+        self._velocity_spec = None
         self.time_stamp = time.time()
         self.event = threading.Event()
 
@@ -61,6 +66,12 @@ class MonitoringService:
         )
         self._l.info(f"Monitoring service initialized with monitor: {self._mockup_latency_monitor}")
 
+        # Velocity monitor. Uses None for synchronization so we don't interpolate values between the records.
+        # We are assuming that records are written often enough and have to input a fake value at time stamp 4.5 so we cannot interpolate
+        self.velocity_spec = mstlo.parse_formula(self._velocity_formula)
+        self.acceleration_spec = mstlo.parse_formula(self._acceleration_formula)
+
+       
 
 
     def record_message(self, body_json):
@@ -123,8 +134,12 @@ class MonitoringService:
             sim_latency_robustness = self.compute_latency_robustness(last_sim_data, "simulation_state", time_stamp)
 
             # mockup velocity
-            time_stamp = time.time()
+            #time_stamp = time.time()
             mockup_data = self.get_historical_data("mockup_state") # Retrieves a list of dicts
+            mockup_velocity_robustness = self.compute_mockup_velocity_robustness(mockup_data)
+
+            # mockup acceleration
+            mockup_acceleration_robustness = self.compute_mockup_acceleration_robustness(mockup_data)
             
 
             if mockup_latency_robustness is None or sim_latency_robustness is None:
@@ -134,6 +149,100 @@ class MonitoringService:
             self._l.debug(f"Computed sim latency robustness: {sim_latency_robustness}")
             print("mockup latency robustness:", mockup_latency_robustness)
             print("sim latency robustness", sim_latency_robustness)
+            print("mockup velocity robustness", mockup_velocity_robustness)
+            print("mockup acceleration robustness", mockup_acceleration_robustness)
+
+    def compute_mockup_velocity_robustness(self, mockup_data):
+
+        steps = []
+        for record in mockup_data:
+            #if record.get("robot_mode") != "Running":
+            #    continue
+            qd_ratio = max(abs(record[f"qd_actual_{i}"]) for i in range(6)) / record["joint_max_speed"]
+            steps.append((qd_ratio, record["time_stamp"]))
+
+        if not steps:
+            return None
+        
+        # Normalize the time stamps to fit [0, 4.5]
+        # The oldest record will be 0 and the latest record will be closest to 4.5
+        t0 = steps[0][1]
+        steps = [(val, ts - t0) for val, ts in steps]
+
+        # We are going to use he update batch method so we need to make sure that there is a value at
+        # time stamp 4.5 or the verdict will return None
+        steps.append((steps[-1][0], 4.5))
+
+        batch = {
+            "qd_ratio" : steps
+        }
+
+        velocity_monitor = mstlo.Monitor(
+            formula=self.velocity_spec, semantics="DelayedQuantitative", synchronization="None"
+        )
+        if velocity_monitor is None:
+            raise RuntimeError("Call start_monitoring() before compute_mockup_velocity_robustness")
+        self._l.info(f"Monitoring service initialized with monitor: {velocity_monitor}")
+
+
+        output = velocity_monitor.update_batch(batch)
+        verdicts = output.verdicts()
+        if not verdicts:
+            return None
+
+        return min(val for _, val in verdicts)
+    
+    def compute_mockup_acceleration_robustness(self, mockup_data):
+
+        steps = []
+        for i in range(len(mockup_data)):
+            curr = mockup_data[i]
+            prev = mockup_data[i-1]
+
+            dt = curr["time_stamp"]- prev["time_stamp"]
+            if dt == 0:
+                continue
+            
+            # Of the 6 joints, get the one with the largest acceleration
+            acc_max = max(
+                abs(curr[f"qd_actual_{j}"] - prev[f"qd_actual_{j}"]) / dt for j in range(6)
+            )
+
+            acc_ratio = acc_max / curr["joint_max_acceleration"]
+            steps.append((acc_ratio, curr["time_stamp"]))
+
+        if not steps:
+            return None
+        
+        # Normalize the time stamps to fit [0, 4.5]
+        # The oldest record will be 0 and the latest record will be closest to 4.5
+        t0 = steps[0][1]
+        steps = [(val, ts - t0) for val, ts in steps]
+
+        # We are going to use he update batch method so we need to make sure that there is a value at
+        # time stamp 4.5 or the verdict will return None
+        steps.append((steps[-1][0], 4.5))
+
+        batch = {
+            "qdd_ratio" : steps
+        }
+
+        acceleration_monitor = mstlo.Monitor(
+            formula=self.acceleration_spec, semantics="DelayedQuantitative", synchronization="None"
+        )
+        if acceleration_monitor is None:
+            raise RuntimeError("Call start_monitoring() before compute_mockup_velocity_robustness")
+        self._l.info(f"Monitoring service initialized with monitor: {acceleration_monitor}")
+
+
+        output = acceleration_monitor.update_batch(batch)
+        verdicts = output.verdicts()
+        if not verdicts:
+            return None
+
+        return min(val for _, val in verdicts)
+
+
 
     def get_historical_data(self, measurement: str):
         query = f'''
@@ -214,7 +323,6 @@ class MonitoringService:
                 data[key] = entry
 
         self._l.debug(f"Retrieved a historical sample from InfluxDB: {data}.")
-        print("data:", data)
         
         return data
 
