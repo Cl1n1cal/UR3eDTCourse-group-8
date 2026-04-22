@@ -1,6 +1,6 @@
 from influxdb_client.client.influxdb_client import InfluxDBClient
 from influxdb_client.client.write_api import SYNCHRONOUS
-from communication.protocol import ROUTING_KEY_STATE
+from communication.protocol import ROUTING_KEY_CTRL, CtrlMsgFields, CtrlMsgKeys, RobotArmStateKeys, RobotMode
 from communication.factory import RabbitMQFactory
 from startup.utils.logging_config import create_service_logger
 import numpy as np
@@ -14,21 +14,24 @@ class MonitoringService:
         self.write_api = None
         self.influx_db_org = None
         self.influxdb_bucket = None
-        self.rabbitmq = RabbitMQFactory.create_rabbitmq()
+        self.publisher = RabbitMQFactory.create_rabbitmq()
+        self.consumer = RabbitMQFactory.create_rabbitmq()
         self._l = create_service_logger("monitoring_service")
-        self._monitor = None
-        self._mockup_latency_monitor = None
-        self._sim_latency_monitor = None
-        self._monitor_latency_monitor = None
-        self._monitor_max_latency = 0 # conf file
+        self.monitor = None
+        self.mockup_latency_monitor = None
+        self.sim_latency_monitor = None
+        self.monitor_latency_monitor = None
+        self.monitor_max_latency = 0 # conf file
         self.max_latency = 0 # conf file
-        self._max_error = 0.1
-        self._min_error = -0.1
-        self._spec_formula = "(q_diff < $max_error && q_diff > $min_error)"
-        self._mockup_latency_formula = "(time_diff <= $max_latency)"
-        self._velocity_formula = "G[0, 4.5](qd_ratio <= 1.0)"
-        self._acceleration_formula = "G[0, 4.5](qdd_ratio <= 1.0)"
-        self._monitor_latency_formula = "time_diff < $monitor_max_latency"
+        self.stuck_joint_q_difference_threshold = 0 # conf file
+        self.max_error = 0.1
+        self.min_error = -0.1
+        self.spec_formula = "(q_diff < $max_error && q_diff > $min_error)"
+        self.mockup_latency_formula = "(time_diff <= $max_latency)"
+        self.velocity_formula = "G[0, 4.5](qd_ratio <= 1.0)"
+        self.acceleration_formula = "G[0, 4.5](qdd_ratio <= 1.0)"
+        self.monitor_latency_formula = "time_diff < $monitor_max_latency"
+        self.stuck_joint_formula = "F[0, 4.5]((qd == 0.0) && (q_diff > $stuck_joint_q_difference_threshold))" # Only evaluated if the robot is running
 
         self._velocity_monitor = None
         self._velocity_spec = None
@@ -37,7 +40,10 @@ class MonitoringService:
 
     def setup(self, monitoring_config):
         self._l.info("Monitoring setup with config ", monitoring_config)
-        self.rabbitmq.connect_to_server()
+        self.publisher.connect_to_server()
+        self.consumer.connect_to_server()
+        self.consumer.subscribe(routing_key=ROUTING_KEY_CTRL,
+                                on_message_callback=self.read_control_message)
 
         client = InfluxDBClient(**monitoring_config) 
         self.write_api = client.write_api(write_options=SYNCHRONOUS)
@@ -46,46 +52,51 @@ class MonitoringService:
         self.influxdb_bucket = monitoring_config["bucket"]
         self.sample_delay = monitoring_config["sample_delay"]
         self.max_latency = monitoring_config["max_latency"]
-        self._monitor_max_latency = monitoring_config["monitor_max_latency"]
+        self.monitor_max_latency = monitoring_config["monitor_max_latency"]
+        self.stuck_joint_q_difference_threshold = monitoring_config["stuck_joint_q_difference_threshold"]
 
-
-        #self.rabbitmq.subscribe(routing_key=ROUTING_KEY_STATE,
-        #                on_message_callback=self.process_state_sample)
 
     def _initialize_monitor(self):
         spec_vars = mstlo.Variables()
-        spec_vars.set("max_error", self._max_error)
-        spec_vars.set("min_error", self._min_error)
-        spec = mstlo.parse_formula(self._spec_formula)
-        self._monitor = mstlo.Monitor(
+        spec_vars.set("max_error", self.max_error)
+        spec_vars.set("min_error", self.min_error)
+        spec = mstlo.parse_formula(self.spec_formula)
+        self.monitor = mstlo.Monitor(
             formula=spec, semantics="Rosi", variables=spec_vars
         )
-        self._l.info(f"Monitoring service initialized with monitor: {self._monitor}")
+        self._l.info(f"Monitoring service initialized with monitor: {self.monitor}")
 
         # Mockup latency monitor
         mockup_latency_vars = mstlo.Variables()
         mockup_latency_vars.set("max_latency", self.max_latency)
-        mockup_latency_spec = mstlo.parse_formula(self._mockup_latency_formula)
-        self._mockup_latency_monitor = mstlo.Monitor(
+        mockup_latency_spec = mstlo.parse_formula(self.mockup_latency_formula)
+        self.mockup_latency_monitor = mstlo.Monitor(
             formula=mockup_latency_spec, semantics="DelayedQuantitative", variables=mockup_latency_vars
         )
-        self._l.info(f"Monitoring service initialized with monitor: {self._mockup_latency_monitor}")
+        self._l.info(f"Monitoring service initialized with monitor: {self.mockup_latency_monitor}")
 
         # Monitor service latency monitor
         monitor_latency_vars = mstlo.Variables()
-        monitor_latency_vars.set("monitor_max_latency", self._monitor_max_latency)
-        monitor_latency_spec = mstlo.parse_formula(self._monitor_latency_formula)
-        self._monitor_latency_monitor = mstlo.Monitor(
+        monitor_latency_vars.set("monitor_max_latency", self.monitor_max_latency)
+        monitor_latency_spec = mstlo.parse_formula(self.monitor_latency_formula)
+        self.monitor_latency_monitor = mstlo.Monitor(
             formula=monitor_latency_spec, semantics="DelayedQuantitative", variables=monitor_latency_vars
         )
-        self._l.info(f"Monitoring service initialized with monitor: {self._monitor_latency_monitor}")
+        self._l.info(f"Monitoring service initialized with monitor: {self.monitor_latency_monitor}")
 
         # Velocity monitor. Uses None for synchronization so we don't interpolate values between the records.
         # We are assuming that records are written often enough and have to input a fake value at time stamp 4.5 so we cannot interpolate
-        self.velocity_spec = mstlo.parse_formula(self._velocity_formula)
-        self.acceleration_spec = mstlo.parse_formula(self._acceleration_formula)
+        self.velocity_spec = mstlo.parse_formula(self.velocity_formula)
+        self.acceleration_spec = mstlo.parse_formula(self.acceleration_formula)
 
-       
+        stuck_joint_vars = mstlo.Variables()
+        stuck_joint_vars.set("stuck_joint_q_difference_threshold", self.stuck_joint_q_difference_threshold)
+        self.stuck_joint_spec = mstlo.parse_fomula(self.stuck_joint_formula)
+
+    def read_control_message(self, ch, method, properties, message: dict):
+        self._l.info(f"Received control message: {message}")
+        msg_type = message.get(CtrlMsgKeys.TYPE)
+        self.latest_ctrl_msg = msg_type
 
 
     def record_message(self, body_json):
@@ -99,23 +110,25 @@ class MonitoringService:
             self._l.debug("",exc_info=e)
             return
 
-   
+    def cleanup(self):
+        self.consumer.close()
+        self.publisher.close()
 
     def start_monitoring(self):
-        if self.rabbitmq == None:
+        if self.publisher == None:
             return
         try:
             def run():
-                if self.rabbitmq == None:
+                if self.publisher == None:
                     return
-                self.rabbitmq.start_consuming()
+                self.publisher.start_consuming()
 
             self.thread = threading.Thread(target=run, daemon=False)
             self.mon_thread = threading.Thread(target=self.monitor_thread, daemon=False)
             self.mon_thread.start()
             self.thread.start()
         except KeyboardInterrupt:
-            self.rabbitmq.close()
+            self.cleanup()
             
 
     def process_state_sample(self, ch, method, properties, body_json):
@@ -148,14 +161,16 @@ class MonitoringService:
             sim_latency_robustness = self.compute_latency_robustness(last_sim_data, "simulation_state", time_stamp)
 
             # Mockup velocity
-            #time_stamp = time.time()
             mockup_data = self.get_historical_data("mockup_state") # Retrieves a list of dicts
             mockup_velocity_robustness = self.compute_mockup_velocity_robustness(mockup_data)
 
             # Mockup acceleration
             mockup_acceleration_robustness = self.compute_mockup_acceleration_robustness(mockup_data)
 
-            # Monitor latency
+            # Mokcup stuck joint detection
+            mockup_stuck_joint = self.compute_mockup_stuck_joint(mockup_data)
+
+            # Monitor latency - should be last
             monitor_latency_robustness = self.compute_monitor_latency_robustness()
             
 
@@ -173,20 +188,36 @@ class MonitoringService:
             # Update the time stamp - used by the monitor latency monitor
             self.time_stamp = time.time()
     
+    def compute_mockup_stuck_joint(self, mockup_data):
+        if not mockup_data:
+            return None
+        
+        results = []
+        steps = [[] for _ in range(6)]
+        for i in range(6):
+            for element in mockup_data:
+                state = element[RobotArmStateKeys.ROBOT_MODE]
+                if state == RobotMode.ROBOT_MODE_RUNNING:
+                    qd = element[f"qd_current_{i}"]
+                    q_diff = abs(element[f"q_target_{i}"] - element[f"q_actual_{i}"])
+                    time = element["time_stamp"]
+                    steps[i].append((qd, q_diff, time))
+                    # TODO: Work from here
+
+
+
+
 
     # Could be changed to query the database for the last time the monitor service wrote to the db
     def compute_monitor_latency_robustness(self):
         tmp_time = time.time()
         time_diff = tmp_time - self.time_stamp
 
-        monitor_latency_robustness = self._monitor_latency_monitor.update(
+        monitor_latency_robustness = self.monitor_latency_monitor.update(
             signal="time_diff", value=time_diff, timestamp=tmp_time
         )
 
         return monitor_latency_robustness.verdicts()
-
-
-
 
     def compute_mockup_velocity_robustness(self, mockup_data):
 
@@ -287,7 +318,8 @@ class MonitoringService:
         |> filter(fn: (r) => r._measurement == "{measurement}")
         |> filter(fn: (r) => contains(value: r._field, set: [
             "joint_max_acceleration","joint_max_speed","q_actual_0","q_actual_1","q_actual_2","q_actual_3","q_actual_4","q_actual_5",
-            "qd_actual_0","qd_actual_1","qd_actual_2","qd_actual_3","qd_actual_4","qd_actual_5",
+            "qd_actual_0","qd_actual_1","qd_actual_2","qd_actual_3","qd_actual_4","qd_actual_5", "q_target_0", "q_target_1", "q_target_2",
+            "q_target_3", "q_target_4", "q_target_5",
             "tcp_pose_0","tcp_pose_1","tcp_pose_2","tcp_pose_3","tcp_pose_4","tcp_pose_5",
             "robot_mode" 
         ]))
@@ -304,6 +336,7 @@ class MonitoringService:
         fields3 = ["robot_mode"]
         fields4 = ["joint_max_speed"]
         fields5 = ["joint_max_acceleration"]
+        fields6 = [f"q_target_{i}" for i in range(6)]
 
         for table in tables:
             for record in table.records:
@@ -314,7 +347,8 @@ class MonitoringService:
                     **{field: record.values.get(field) for field in fields2},
                     **{field: record.values.get(field) for field in fields3},
                     **{field: record.values.get(field) for field in fields4},
-                    **{field: record.values.get(field) for field in fields5}
+                    **{field: record.values.get(field) for field in fields5},
+                    **{field: record.values.get(field) for field in fields6}
                 }
                 data.append(entry)
 
@@ -363,7 +397,7 @@ class MonitoringService:
         return data
 
     def compute_latency_robustness(self, sample_data, measurement: str, time_stamp):
-        if self._monitor is None or self._mockup_latency_monitor is None:
+        if self.monitor is None or self.mockup_latency_monitor is None:
             raise RuntimeError("Call start_monitoring() before compute_robutsness")
 
         """
@@ -394,7 +428,7 @@ class MonitoringService:
         print(f"{measurement} time:", mockup_time)
         print(f"{measurement} time:", time.ctime(mockup_time))
         print(f"timediff:", time_diff)
-        mockup_latency_robustness = self._mockup_latency_monitor.update(
+        mockup_latency_robustness = self.mockup_latency_monitor.update(
             signal="time_diff", value=time_diff, timestamp=monitor_adjusted_time
         )
 
