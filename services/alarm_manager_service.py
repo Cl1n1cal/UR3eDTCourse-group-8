@@ -37,43 +37,40 @@ class AlarmManagerService:
         if not monitor_type in self.current_status:
             self._l.warning("Received monitoring message with unknown type: ", monitor_type)
             return
-        next_status = self.current_status
-        # depending on the type, read robustness value and set severity of alarm
-        next_status = self.evaluate_status(monitor_type, msg)
+        # Evaluate the new status based on the robustness value and the thresholds defined for each monitor type
+        next_status = self.evaluate_status(msg)
         # if any status has changed, send alarm message to rabbitmq with new status and severity
         if next_status != self.current_status:
             self._l.info("Alarm status changed: ", next_status)
             self.current_status = next_status
             self.rabbitmq.send_message(routing_key=ROUTING_KEY_RECORDER, message=self.create_alarm_msg())
     
-    def evaluate_status(self, monitor_type, msg):
+    def evaluate_status(self, msg):
+        monitor_type = msg.get(MonitoringMsgKeys.TYPE)
+        robustness_value = get_robustness(msg)
+        if robustness_value is None:
+            self._l.info("Received monitoring message with non-conclusive bounds: ", msg)
         next_status = self.current_status
         match monitor_type:
                 case MonitoringMsgTypes.STUCK_JOINT_0 | MonitoringMsgTypes.STUCK_JOINT_1 | MonitoringMsgTypes.STUCK_JOINT_2 | MonitoringMsgTypes.STUCK_JOINT_3 | MonitoringMsgTypes.STUCK_JOINT_4 | MonitoringMsgTypes.STUCK_JOINT_5:
-                    robustness_value = msg.get(MonitoringMsgKeys.ROBUSTNESS_VALUE)
                     next_status[monitor_type] = self.evaluate_stuck_joint(robustness_value)
 
                 case MonitoringMsgTypes.WEAR_JOINT_0 | MonitoringMsgTypes.WEAR_JOINT_1 | MonitoringMsgTypes.WEAR_JOINT_2 | MonitoringMsgTypes.WEAR_JOINT_3 | MonitoringMsgTypes.WEAR_JOINT_4 | MonitoringMsgTypes.WEAR_JOINT_5:
                     pass
 
                 case MonitoringMsgTypes.TCP_MISSMATCH:
-                    robustness_value = msg.get(MonitoringMsgKeys.ROBUSTNESS_VALUE)
                     next_status[monitor_type] = self.evaluate_tcp_mismatch(robustness_value)
 
                 case MonitoringMsgTypes.MAX_VELOCITY_EXCEEDED:
-                    robustness_value = msg.get(MonitoringMsgKeys.ROBUSTNESS_VALUE)
                     next_status[monitor_type] = self.evaluate_max_velocity_exceeded(robustness_value)
 
                 case MonitoringMsgTypes.MAX_ACCELERATION_EXCEEDED:
-                    robustness_value = msg.get(MonitoringMsgKeys.ROBUSTNESS_VALUE)
                     next_status[monitor_type] = self.evaluate_max_acceleration_exceeded(robustness_value)
 
                 case MonitoringMsgTypes.SIMULATION_OFFLINE:
-                    robustness_value = msg.get(MonitoringMsgKeys.ROBUSTNESS_VALUE)
                     next_status[monitor_type] = self.evaluate_simulation_offline(robustness_value)
 
                 case MonitoringMsgTypes.MOCKUP_OFFLINE:
-                    robustness_value = msg.get(MonitoringMsgKeys.ROBUSTNESS_VALUE)
                     next_status[monitor_type] = self.evaluate_mockup_offline(robustness_value)
                 case _:
                     self._l.warning("Received monitoring message with unknown type: ", monitor_type)
@@ -155,3 +152,21 @@ class AlarmManagerService:
             self.rabbitmq.start_consuming()
         except KeyboardInterrupt:
             self._l.info("Alarm Manager Service stopped by user.")
+
+def get_robustness(msg):
+    robustness_lower = msg.get(MonitoringMsgKeys.ROBUSTNESS_LOWER_BOUND)
+    robustness_upper = msg.get(MonitoringMsgKeys.ROBUSTNESS_UPPER_BOUND)
+
+    if robustness_lower is None and robustness_upper is None:
+        raise ValueError("Monitoring message does not contain robustness bounds.")
+    
+    if robustness_lower == robustness_upper:
+        robustness_value = robustness_lower
+    elif robustness_lower >= 0.0:
+        robustness_value = robustness_lower
+    elif robustness_upper <= 0.0:
+        robustness_value = robustness_upper
+    else:
+        robustness_value = None
+
+    return robustness_value

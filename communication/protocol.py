@@ -17,7 +17,6 @@ class MonitoringMsgKeys:
     TYPE = "type"
     ROBUSTNESS_UPPER_BOUND = "robustness_upper_bound"
     ROBUSTNESS_LOWER_BOUND = "robustness_lower_bound"
-    ROBUSTNESS_VALUE = "robustness_value"
     TIMESTAMP = "timestamp"
 
 class MonitoringMsgTypes:
