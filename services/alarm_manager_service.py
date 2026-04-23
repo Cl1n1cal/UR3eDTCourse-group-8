@@ -163,3 +163,11 @@ class AlarmManagerService:
         }
 
         return rdata
+
+    def start_serving(self):
+        if self.rabbitmq == None:
+            raise RuntimeError("RabbitMQ client is not initialized. Call setup() first.")
+        try:
+            self.rabbitmq.start_consuming()
+        except KeyboardInterrupt:
+            self._l.info("Alarm Manager Service stopped by user.")
