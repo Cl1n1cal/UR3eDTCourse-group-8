@@ -8,8 +8,43 @@ ROUTING_KEY_MODEL_STATE = "robotarm.model.state"
 ROUTING_KEY_CTRL = "robotarm.ctrl"
 ROUTING_KEY_RECORDER = "robotarm.recorder.#"
 ROUTING_KEY_CALIBRATION = "robotarm.model.calibration"
+ROUTING_KEY_MONITORING = "robotarm.monitoring"
 
 ### MESSAGES
+class MonitoringMsgKeys:
+    """Keys used in monitoring messages sent from the monitoring service."""
+
+    TYPE = "type"
+    ROBUSTNESS_UPPER_BOUND = "robustness_upper_bound"
+    ROBUSTNESS_LOWER_BOUND = "robustness_lower_bound"
+    TIMESTAMP = "timestamp"
+
+class MonitoringMsgTypes:
+    """Types of monitoring messages sent from the monitoring service."""
+
+    STUCK_JOINT_0 = "stuck_joint_0"
+    STUCK_JOINT_1 = "stuck_joint_1"
+    STUCK_JOINT_2 = "stuck_joint_2"
+    STUCK_JOINT_3 = "stuck_joint_3"
+    STUCK_JOINT_4 = "stuck_joint_4"
+    STUCK_JOINT_5 = "stuck_joint_5"
+
+    WEAR_JOINT_0 = "wear_joint_0"
+    WEAR_JOINT_1 = "wear_joint_1"
+    WEAR_JOINT_2 = "wear_joint_2"
+    WEAR_JOINT_3 = "wear_joint_3"
+    WEAR_JOINT_4 = "wear_joint_4"
+    WEAR_JOINT_5 = "wear_joint_5"
+
+    TCP_MISSMATCH = "tcp_mismatch"
+
+    MAX_VELOCITY_EXCEEDED = "max_velocity_exceeded"
+    MAX_ACCELERATION_EXCEEDED = "max_acceleration_exceeded"
+
+    SIMULATION_OFFLINE = "simulation_offline"
+    MOCKUP_OFFLINE = "mockup_offline"
+
+
 class CtrlMsgFields:
     """Types of control messages that can be sent to the robot arm."""
 
