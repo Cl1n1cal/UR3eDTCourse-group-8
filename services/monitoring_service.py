@@ -1,6 +1,6 @@
 from influxdb_client.client.influxdb_client import InfluxDBClient
 from influxdb_client.client.write_api import SYNCHRONOUS
-from communication.protocol import ROUTING_KEY_STATE
+from communication.protocol import ROUTING_KEY_STATE, ROUTING_KEY_MONITORING
 from communication.factory import RabbitMQFactory
 from startup.utils.logging_config import create_service_logger
 import threading
@@ -75,7 +75,8 @@ class MonitoringService:
         if robustness is None:
             return
         self._l.debug(f"Computed robustness: {robustness}")
-        self.record_message(self.create_robustness_msg(robustness, "q_diff_robustness"))
+        self.record_message(self.create_robustness_recorder_msg(robustness, "q_diff_robustness"))
+        #self.rabbitmq.send_message(routing_key=ROUTING_KEY_MONITORING, message=self.create_robustness_msg(robustness, "q_diff_robustness"))
         
     def get_historical_data(self):
         query = f'''
@@ -137,7 +138,7 @@ class MonitoringService:
         )
         return robustness.verdicts()
     
-    def create_robustness_msg(self, robustness, measurement_name: str):
+    def create_robustness_recorder_msg(self, robustness, measurement_name: str):
         # Store the robustness in the influxdb. Duplicate records on the same timestamp will just be updated.
         records = []
         for t, rob in robustness:
@@ -160,6 +161,5 @@ class MonitoringService:
                     },
                 }
             )
-
         return records
     

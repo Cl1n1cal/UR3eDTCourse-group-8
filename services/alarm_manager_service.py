@@ -15,27 +15,7 @@ class AlarmManagerService:
     def __init__(self, config):
         self.rabbitmq = RabbitMQFactory.create_rabbitmq()
         self._l = create_service_logger("alarm_manager_service")
-        self.current_status = {
-            MonitoringMsgTypes.STUCK_JOINT_0: AlarmSeverity.NONE,
-            MonitoringMsgTypes.STUCK_JOINT_1: AlarmSeverity.NONE,
-            MonitoringMsgTypes.STUCK_JOINT_2: AlarmSeverity.NONE,
-            MonitoringMsgTypes.STUCK_JOINT_3: AlarmSeverity.NONE,
-            MonitoringMsgTypes.STUCK_JOINT_4: AlarmSeverity.NONE,
-            MonitoringMsgTypes.STUCK_JOINT_5: AlarmSeverity.NONE,
-
-            MonitoringMsgTypes.WEAR_JOINT_0: AlarmSeverity.NONE,
-            MonitoringMsgTypes.WEAR_JOINT_1: AlarmSeverity.NONE,
-            MonitoringMsgTypes.WEAR_JOINT_2: AlarmSeverity.NONE,
-            MonitoringMsgTypes.WEAR_JOINT_3: AlarmSeverity.NONE,
-            MonitoringMsgTypes.WEAR_JOINT_4: AlarmSeverity.NONE,
-            MonitoringMsgTypes.WEAR_JOINT_5: AlarmSeverity.NONE,
-
-            MonitoringMsgTypes.TCP_MISSMATCH: AlarmSeverity.NONE,
-            MonitoringMsgTypes.MAX_VELOCITY_EXCEEDED: AlarmSeverity.NONE,
-            MonitoringMsgTypes.MAX_ACCELERATION_EXCEEDED: AlarmSeverity.NONE,
-            MonitoringMsgTypes.SIMULATION_OFFLINE: AlarmSeverity.NONE,
-            MonitoringMsgTypes.MOCKUP_OFFLINE: AlarmSeverity.NONE,
-        }
+        self.current_status = {}
         self.tcp_mismatch_high_threshold = config["tcp_mismatch_high_threshold"]
         self.tcp_mismatch_medium_threshold = config["tcp_mismatch_medium_threshold"]
         self.max_velocity_exceeded_high_threshold = config["max_velocity_exceeded_high_threshold"]
@@ -48,6 +28,7 @@ class AlarmManagerService:
         self.rabbitmq.connect_to_server()
         self.rabbitmq.subscribe(routing_key=ROUTING_KEY_MONITORING,
                         on_message_callback=self.handle_monitoring_message)
+        self.rabbitmq.send_message(routing_key=ROUTING_KEY_RECORDER, message=self.create_alarm_msg())
 
     def handle_monitoring_message(self, ch, method, properties, msg):
         self._l.debug("Received monitoring message: ", msg)
@@ -94,6 +75,8 @@ class AlarmManagerService:
                 case MonitoringMsgTypes.MOCKUP_OFFLINE:
                     robustness_value = msg.get(MonitoringMsgKeys.ROBUSTNESS_VALUE)
                     next_status[monitor_type] = self.evaluate_mockup_offline(robustness_value)
+                case _:
+                    self._l.warning("Received monitoring message with unknown type: ", monitor_type)
 
         return next_status
 
@@ -151,7 +134,8 @@ class AlarmManagerService:
         fields = {}
         #create fields for all alarm types with their severity as value
         for alarm_type, severity in self.current_status.items():
-            fields[alarm_type] = severity.value
+            if severity != AlarmSeverity.NONE:
+                fields[alarm_type] = severity.value
 
         rdata = {
             "measurement": "alarm_status",
@@ -161,7 +145,7 @@ class AlarmManagerService:
             },
             "fields": fields,
         }
-
+        print(f"Created alarm message: {rdata}")
         return rdata
 
     def start_serving(self):

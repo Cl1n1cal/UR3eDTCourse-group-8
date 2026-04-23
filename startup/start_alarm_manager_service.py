@@ -7,7 +7,7 @@ This module starts the alarm manager service found in ../services/alarm_manager_
 
 def start_alarm_manager_service(ok_queue=None):
     config = load_config("startup/startup.conf")
-    alarm_manager_service = AlarmManagerService(config)
+    alarm_manager_service = AlarmManagerService(config["digital_twin"]["alarm_manager_service"])
     alarm_manager_service.setup()
 
     if ok_queue is not None:
