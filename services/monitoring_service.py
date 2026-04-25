@@ -197,17 +197,6 @@ class MonitoringService:
         except KeyboardInterrupt:
             self.cleanup()
             
-
-    def process_state_sample(self, ch, method, properties, body_json):
-        # get robot arm state history from influx db
-        #self.time_stamp = time.time()
-        data = self.get_historical_data()
-        robustness = self.compute_latency_robustness(data)
-        if robustness is None:
-            return
-        self._l.debug(f"Computed robustness: {robustness}")
-        #self.record_message(self.create_robustness_msg(robustness, "q_diff_robustness"))
-
     def milliseconds_to_seconds(self, milliseconds):
         return milliseconds/1000.0
     
@@ -268,7 +257,7 @@ class MonitoringService:
             # Used in the acceleration calculation where we need the diffence in velocity and time
             self.old_mockup_data = mockup_data
 
-            self.write_monitoring_results(
+            self.upload_state(
                 mockup_latency_robustness,
                 sim_latency_robustness,
                 mockup_velocity_robustness,
@@ -534,32 +523,6 @@ class MonitoringService:
         self._l.debug(f"Retrieved a historical sample from InfluxDB: {data}.")
 
         return data
-    
-    def create_robustness_msg(self, robustness, measurement_name: str):
-        # Store the robustness in the influxdb. Duplicate records on the same timestamp will just be updated.
-        records = []
-        for t, rob in robustness:
-            ts = int(t * 1e9)
-
-            # if the rob is inf, set it to a large number
-            if rob[0] == float("-inf"):
-                rob = (-20.0, rob[1])
-            if rob[1] == float("inf"):
-                rob = (rob[0], 20.0)
-
-            records.append(
-                {
-                    "measurement": measurement_name,
-                    "tags": {"source": "monitor_service"},
-                    "time": ts,
-                    "fields": {
-                        "robustness_lower_bound": rob[0],
-                        "robustness_upper_bound": rob[1],
-                    },
-                }
-            )
-
-        return records
 
     def create_monitoring_msg(self,
                               mockup_latency_robustness,
@@ -608,14 +571,15 @@ class MonitoringService:
             "fields": fields,
         }
 
-    def write_monitoring_results(self,
-                                 mockup_latency_robustness,
-                                 sim_latency_robustness,
-                                 mockup_velocity_robustness,
-                                 mockup_acceleration_robustness,
-                                 mockup_stuck_joint_robustness,
-                                 sim_vs_mockup_robustness,
-                                 mockup_tcp_robustness):
+    def upload_state(self,
+                     mockup_latency_robustness,
+                     sim_latency_robustness,
+                     mockup_velocity_robustness,
+                     mockup_acceleration_robustness,
+                     mockup_stuck_joint_robustness,
+                     sim_vs_mockup_robustness,
+                     mockup_tcp_robustness):
+        self._l.debug("Uploading monitoring state to RabbitMQ.")
         msg = self.create_monitoring_msg(
             mockup_latency_robustness,
             sim_latency_robustness,
@@ -625,4 +589,4 @@ class MonitoringService:
             sim_vs_mockup_robustness,
             mockup_tcp_robustness,
         )
-        self.record_message(msg)
+        self.publisher.send_message("robotarm.recorder.monitoring", msg)
