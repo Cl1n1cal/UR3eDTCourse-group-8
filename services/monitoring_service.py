@@ -10,13 +10,13 @@ import time
 from datetime import datetime, timezone
 
 class MonitoringService:
-    def __init__(self):
+    def __init__(self, step_period):
         self.write_api = None
         self.influx_db_org = None
         self.influxdb_bucket = None
-        self.publisher = RabbitMQFactory.create_rabbitmq()
-        self.consumer = RabbitMQFactory.create_rabbitmq()
+        self.rabbitmq = RabbitMQFactory.create_rabbitmq()
         self._l = create_service_logger("monitoring_service")
+        self.step_period = step_period
 
         # Monitors
         self.latency_monitor = None
@@ -43,8 +43,7 @@ class MonitoringService:
 
         # Other
         self.time_stamp = time.time()
-        self.event = threading.Event()
-        self.mockup_stuck_joint_robustness = [None]*6
+        self.step_period = 0.0 # conf file
       
         self.mockup_max_latency = 0.0 # conf file
         self.sim_max_latency = 0.0 # conf file 
@@ -55,13 +54,9 @@ class MonitoringService:
         self.min_q_error = 0.0 # conf file
         self.old_mockup_data = None
       
-
     def setup(self, monitoring_config):
         self._l.info("Monitoring setup with config ", monitoring_config)
-        self.publisher.connect_to_server()
-        self.consumer.connect_to_server()
-        self.consumer.subscribe(routing_key=ROUTING_KEY_CTRL,
-                                on_message_callback=self.read_control_message)
+        self.rabbitmq.connect_to_server()
 
         client = InfluxDBClient(**monitoring_config) 
         self.write_api = client.write_api(write_options=SYNCHRONOUS)
@@ -148,7 +143,7 @@ class MonitoringService:
         self.sim_vs_mockup_monitor = mstlo.Monitor(
             formula=sim_vs_mockup_spec, semantics="Rosi", variables=sim_vs_mockup_vars
         )
-        self._l.info(f"Monitoring service initialized with monitor: {self.mockup_tcp_monitor}")
+        self._l.info(f"Monitoring service initialized with monitor: {self.sim_vs_mockup_monitor}")
 
         # Mockup tcp monitor
         mockup_tcp_vars = mstlo.Variables()
@@ -160,15 +155,8 @@ class MonitoringService:
         )
         self._l.info(f"Monitoring service initialized with monitor: {self.mockup_tcp_monitor}")
 
-    def read_control_message(self, ch, method, properties, message: dict):
-        self._l.info(f"Received control message: {message}")
-        msg_type = message.get(CtrlMsgKeys.TYPE)
-        self.latest_ctrl_msg = msg_type
-
-
     def record_message(self, body_json):
-        self._l.debug("New monitoring msg:")
-        self._l.debug(body_json)
+        self._l.debug(f"New monitoring msg: {body_json}")
         try:
             if(self.write_api != None and self.influx_db_org != None and self.influxdb_bucket != None):
                 self.write_api.write(self.influxdb_bucket, self.influx_db_org, body_json)
@@ -178,47 +166,34 @@ class MonitoringService:
             return
 
     def cleanup(self):
-        self.consumer.close()
-        self.publisher.close()
+        self.rabbitmq.close()
 
     def start_monitoring(self):
-        if self.publisher == None:
+        if self.rabbitmq == None:
             return
         try:
-            def run():
-                if self.publisher == None:
-                    return
-                self.publisher.start_consuming()
-
-            self.thread = threading.Thread(target=run, daemon=False)
-            self.mon_thread = threading.Thread(target=self.monitor_thread, daemon=False)
-            self.mon_thread.start()
-            self.thread.start()
+            self.monitor_loop()
         except KeyboardInterrupt:
+            self._l.info("Monitoring service interrupted by user.")
             self.cleanup()
             
     def milliseconds_to_seconds(self, milliseconds):
         return milliseconds/1000.0
     
-    def monitor_thread(self):
+    def monitor_loop(self):
         self.initialize_monitor()
-        time.sleep(10) # Let the mockup initialize
+        time.sleep(self.milliseconds_to_seconds(self.sample_delay)*2) # Wait for some data to be published before starting the monitoring loop
 
         while True:
-            time.sleep(self.milliseconds_to_seconds(self.sample_delay)) # time.sleep takes seconds as parameter
+            time.sleep(self.step_period)
 
             # Fetch mockup and sim data in parallel
-            results = {}
-            def fetch_mockup(): results["mockup"] = self.get_historical_mockup_data()
-            def fetch_sim(): results["sim"] = self.get_historical_simulation_data()
-            t1 = threading.Thread(target=fetch_mockup)
-            t2 = threading.Thread(target=fetch_sim)
-            t1.start(); t2.start()
-            t1.join(); t2.join()
-            mockup_data, sim_data = results["mockup"][0], results["sim"][0] # results are type list with only one element
+            results = self.get_historical_data()
+            mockup_data = results.get("mockup_state")
+            sim_data = results.get("simulation_state")
 
-            print("mockup_data:", mockup_data)
-            print("sim_data", sim_data)
+            self._l.debug(f"mockup_data: {mockup_data}")
+            self._l.debug(f"sim_data: {sim_data}")
 
             # Extract last record for latency checks
             time_stamp = time.time()
@@ -231,10 +206,10 @@ class MonitoringService:
             # Mockup acceleration
             mockup_acceleration_robustness = self.compute_mockup_acceleration_robustness(mockup_data)
 
-
             # Mockup stuck joint detection
+            mockup_stuck_joint_robustness = [None]*6
             for i in range(6):
-                self.mockup_stuck_joint_robustness[i] = self.compute_mockup_stuck_joint(mockup_data, i)
+                mockup_stuck_joint_robustness[i] = self.compute_mockup_stuck_joint(mockup_data, i)
             
             # Sim vs mockup robustness
             sim_vs_mockup_robustness = self.compute_sim_vs_mockup_robustness(mockup_data, sim_data)
@@ -242,30 +217,31 @@ class MonitoringService:
             # Mockup tcp robustness
             mockup_tcp_robustness = self.compute_mockup_tcp_robustness(mockup_data)
             
-            print("mockup latency robustness:", mockup_latency_robustness)
-            print("sim latency robustness", sim_latency_robustness)
-            print("mockup velocity robustness", mockup_velocity_robustness)
-            print("mockup acceleration robustness", mockup_acceleration_robustness)
+            self._l.debug(f"mockup latency robustness: {mockup_latency_robustness}")
+            self._l.debug(f"sim latency robustness: {sim_latency_robustness}")
+            self._l.debug(f"mockup velocity robustness: {mockup_velocity_robustness}")
+            self._l.debug(f"mockup acceleration robustness: {mockup_acceleration_robustness}")
 
             for i in range(6):
-                print(f"mockup stuck joint_{i}", self.mockup_stuck_joint_robustness[i])
+                self._l.debug(f"mockup stuck joint_{i}: {mockup_stuck_joint_robustness[i]}")
 
-            print("sim vs mockup robustness", sim_vs_mockup_robustness)
-            print("mockup tcp robustness", mockup_tcp_robustness)
+            self._l.debug(f"sim vs mockup robustness: {sim_vs_mockup_robustness}")
+            self._l.debug(f"mockup tcp robustness: {mockup_tcp_robustness}")
 
             # Set this after doing the computaions
             # Used in the acceleration calculation where we need the diffence in velocity and time
             self.old_mockup_data = mockup_data
 
-            self.upload_state(
+            self.record_message(self.create_monitoring_msg(
                 mockup_latency_robustness,
                 sim_latency_robustness,
                 mockup_velocity_robustness,
                 mockup_acceleration_robustness,
-                self.mockup_stuck_joint_robustness,
+                mockup_stuck_joint_robustness,
                 sim_vs_mockup_robustness,
-                mockup_tcp_robustness,
-            )
+                mockup_tcp_robustness
+            ))
+            #send rabbitmq message to be caught by alarm service TODOOO!
 
     
     def compute_latency_robustness(self, sample_data, measurement, time_stamp):
@@ -410,7 +386,6 @@ class MonitoringService:
 
         # Calculate difference between mockup and sim values for q_actual
         error = sum((mockup_data[f"q_actual_{i}"] - sim_data[f"q_actual_{i}"])**2 for i in range(6))**0.5
-        self._l.debug(f"Calculated eucledian distance between mockup and sim q_actual values: {error}")
         
         # Get latest time stamp from the sample data
         latest_timestamp = max(mockup_data["time_stamp"], sim_data["time_stamp"])
@@ -429,7 +404,6 @@ class MonitoringService:
 
         # Calculate difference between mockup and sim values for q_actual
         error = sum((mockup_data[f"q_actual_{i}"] - mockup_data[f"q_actual_{i}"])**2 for i in range(6))**0.5
-        self._l.debug(f"Calculated eucledian distance between mockup and sim q_actual values: {error}")
         
         # Get the time stamp from mockup data
         time_stamp = mockup_data["time_stamp"]
@@ -438,27 +412,28 @@ class MonitoringService:
         )
 
         return output.verdicts()
-        
-    def get_historical_mockup_data(self):
+    
+    def get_historical_data(self):
         query = f'''
         from(bucket: "{self.influxdb_bucket}")
-        |> range(start: -5000ms, stop: -{self.sample_delay}ms)
-        |> filter(fn: (r) => r._measurement == "mockup_state")
+        |> range(start: -1h, stop: -{self.sample_delay}ms)
+        |> filter(fn: (r) => r._measurement == "mockup_state" or r._measurement == "simulation_state")
         |> filter(fn: (r) => contains(value: r._field, set: [
-            "joint_max_acceleration","joint_max_speed","q_actual_0","q_actual_1","q_actual_2","q_actual_3","q_actual_4","q_actual_5",
-            "qd_actual_0","qd_actual_1","qd_actual_2","qd_actual_3","qd_actual_4","qd_actual_5", "q_target_0", "q_target_1", "q_target_2",
-            "q_target_3", "q_target_4", "q_target_5",
+            "joint_max_acceleration","joint_max_speed",
+            "q_actual_0","q_actual_1","q_actual_2","q_actual_3","q_actual_4","q_actual_5",
+            "qd_actual_0","qd_actual_1","qd_actual_2","qd_actual_3","qd_actual_4","qd_actual_5",
+            "q_target_0", "q_target_1", "q_target_2", "q_target_3", "q_target_4", "q_target_5",
             "tcp_pose_0","tcp_pose_1","tcp_pose_2","tcp_pose_3","tcp_pose_4","tcp_pose_5",
-            "robot_mode" 
+            "robot_mode",
         ]))
         |> group(columns: ["_measurement", "_field"])
+        |> last()
         |> pivot(rowKey: ["_time", "_measurement"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"])
-        |> last(column: "_time")
+        |> sort(columns: ["time_stamp", "measurement"])
         '''
         tables = self.query_api.query(query, org=self.influx_db_org)
 
-        data = []
+        data = {}
         fields = [f"q_actual_{i}" for i in range(6)]
         fields1 = [f"tcp_pose_{i}" for i in range(6)]
         fields2 = [f"qd_actual_{i}" for i in range(6)]
@@ -469,6 +444,7 @@ class MonitoringService:
 
         for table in tables:
             for record in table.records:
+                key = record.get_measurement()
                 entry = {
                     "time_stamp": record.get_time().timestamp(),
                     **{field: record.values.get(field) for field in fields},
@@ -479,49 +455,10 @@ class MonitoringService:
                     **{field: record.values.get(field) for field in fields5},
                     **{field: record.values.get(field) for field in fields6}
                 }
-                data.append(entry)
+                data[key] = entry
 
         self._l.debug(f"Retrieved a historical sample from InfluxDB: {data}.")
         
-        return data
-    
-    def get_historical_simulation_data(self):
-        query = f'''
-        from(bucket: "{self.influxdb_bucket}")
-        |> range(start: -5000ms, stop: -{self.sample_delay}ms)
-        |> filter(fn: (r) => r._measurement == "simulation_state")
-        |> filter(fn: (r) => contains(value: r._field, set: [
-            "q_actual_0","q_actual_1","q_actual_2","q_actual_3","q_actual_4","q_actual_5",
-            "qd_actual_0","qd_actual_1","qd_actual_2","qd_actual_3","qd_actual_4","qd_actual_5",
-            "tcp_pose_0","tcp_pose_1","tcp_pose_2","tcp_pose_3","tcp_pose_4","tcp_pose_5",
-            "robot_mode"
-        ]))
-        |> group(columns: ["_measurement", "_field"])
-        |> pivot(rowKey: ["_time", "_measurement"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"])
-        |> last(column: "_time")
-        '''
-        tables = self.query_api.query(query, org=self.influx_db_org)
-
-        data = []
-        fields = [f"q_actual_{i}" for i in range(6)]
-        fields1 = [f"tcp_pose_{i}" for i in range(6)]
-        fields2 = [f"qd_actual_{i}" for i in range(6)]
-        fields3 = ["robot_mode"]
-
-        for table in tables:
-            for record in table.records:
-                entry = {
-                    "time_stamp": record.get_time().timestamp(),
-                    **{field: record.values.get(field) for field in fields},
-                    **{field: record.values.get(field) for field in fields1},
-                    **{field: record.values.get(field) for field in fields2},
-                    **{field: record.values.get(field) for field in fields3}
-                }
-                data.append(entry)
-
-        self._l.debug(f"Retrieved a historical sample from InfluxDB: {data}.")
-
         return data
 
     def create_monitoring_msg(self,
@@ -570,23 +507,3 @@ class MonitoringService:
             "tags": {"source": "monitor_service"},
             "fields": fields,
         }
-
-    def upload_state(self,
-                     mockup_latency_robustness,
-                     sim_latency_robustness,
-                     mockup_velocity_robustness,
-                     mockup_acceleration_robustness,
-                     mockup_stuck_joint_robustness,
-                     sim_vs_mockup_robustness,
-                     mockup_tcp_robustness):
-        self._l.debug("Uploading monitoring state to RabbitMQ.")
-        msg = self.create_monitoring_msg(
-            mockup_latency_robustness,
-            sim_latency_robustness,
-            mockup_velocity_robustness,
-            mockup_acceleration_robustness,
-            mockup_stuck_joint_robustness,
-            sim_vs_mockup_robustness,
-            mockup_tcp_robustness,
-        )
-        self.publisher.send_message("robotarm.recorder.monitoring", msg)
