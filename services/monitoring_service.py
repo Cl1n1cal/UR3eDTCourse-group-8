@@ -1,6 +1,6 @@
 from influxdb_client.client.influxdb_client import InfluxDBClient
 from influxdb_client.client.write_api import SYNCHRONOUS
-from communication.protocol import ROUTING_KEY_CTRL, CtrlMsgFields, CtrlMsgKeys, RobotArmStateKeys, RobotMode
+from communication.protocol import ROUTING_KEY_MONITORING, RobotArmStateKeys, MonitoringMsgKeys, MonitoringMsgTypes
 from communication.factory import RabbitMQFactory
 from startup.utils.logging_config import create_service_logger
 import numpy as np
@@ -52,6 +52,7 @@ class MonitoringService:
         self.stuck_joint_q_difference_threshold = 0.0 # conf file
         self.max_q_error = 0.0 # conf file
         self.min_q_error = 0.0 # conf file
+        self.wait_time = 0.0 # conf file
         self.old_mockup_data = None
       
     def setup(self, monitoring_config):
@@ -72,6 +73,7 @@ class MonitoringService:
         self.stuck_joint_qd_threshold = monitoring_config["stuck_joint_qd_threshold"]
         self.max_q_error = monitoring_config["max_q_error"]
         self.min_q_error = monitoring_config["min_q_error"]
+        self.wait_time = monitoring_config["wait_time"]
 
     def initialize_monitor(self):
 
@@ -141,7 +143,7 @@ class MonitoringService:
         sim_vs_mockup_vars.set("min_q_error", self.min_q_error)
         sim_vs_mockup_spec = mstlo.parse_formula(self.sim_vs_mockup_formula)
         self.sim_vs_mockup_monitor = mstlo.Monitor(
-            formula=sim_vs_mockup_spec, semantics="Rosi", variables=sim_vs_mockup_vars
+            formula=sim_vs_mockup_spec, semantics="DelayedQuantitative", variables=sim_vs_mockup_vars
         )
         self._l.info(f"Monitoring service initialized with monitor: {self.sim_vs_mockup_monitor}")
 
@@ -151,7 +153,7 @@ class MonitoringService:
         mockup_tcp_vars.set("min_q_error", self.min_q_error)
         mockup_tcp_spec = mstlo.parse_formula(self.mockup_tcp_formula)
         self.mockup_tcp_monitor = mstlo.Monitor(
-            formula=mockup_tcp_spec, semantics="Rosi", variables=mockup_tcp_vars
+            formula=mockup_tcp_spec, semantics="DelayedQuantitative", variables=mockup_tcp_vars
         )
         self._l.info(f"Monitoring service initialized with monitor: {self.mockup_tcp_monitor}")
 
@@ -182,7 +184,8 @@ class MonitoringService:
     
     def monitor_loop(self):
         self.initialize_monitor()
-        time.sleep(self.milliseconds_to_seconds(self.sample_delay)*10) # Wait for some data to be published before starting the monitoring loop
+        time.sleep(self.wait_time) # Make sure everything is set up before starting to monitor
+        time.sleep(self.milliseconds_to_seconds(self.sample_delay)) # Wait for some data to be published before starting the monitoring loop
 
         while True:
             time.sleep(self.step_period)
@@ -232,7 +235,7 @@ class MonitoringService:
             # Used in the acceleration calculation where we need the diffence in velocity and time
             self.old_mockup_data = mockup_data
 
-            self.record_message(self.create_monitoring_msg(
+            rdata = self.create_monitoring_recorder_msg(
                 mockup_latency_robustness,
                 sim_latency_robustness,
                 mockup_velocity_robustness,
@@ -240,8 +243,20 @@ class MonitoringService:
                 mockup_stuck_joint_robustness,
                 sim_vs_mockup_robustness,
                 mockup_tcp_robustness
-            ))
-            #send rabbitmq message to be caught by alarm service TODOOO!
+            )
+
+            mdata = self.create_monitoring_msg(
+                mockup_latency_robustness,
+                sim_latency_robustness,
+                mockup_velocity_robustness,
+                mockup_acceleration_robustness,
+                mockup_stuck_joint_robustness,
+                sim_vs_mockup_robustness,
+                mockup_tcp_robustness
+            )
+
+            self.record_message(rdata)
+            self.rabbitmq.send_message(ROUTING_KEY_MONITORING, mdata)
 
     
     def compute_latency_robustness(self, sample_data, measurement, time_stamp):
@@ -472,6 +487,42 @@ class MonitoringService:
                               sim_vs_mockup_robustness,
                               mockup_tcp_robustness):
         timestamp = datetime.fromtimestamp(time.time(), timezone.utc).isoformat()
+        msg = []
+
+        def latest(verdicts):
+            """Return the value of the last verdict, or None if no verdicts."""
+            if not verdicts:
+                return None
+            return verdicts[-1][1]
+
+        # for each robustess value, check if there are any verdicts and if so, append to msg a dict with the robustness type and values
+        if (v := latest(mockup_latency_robustness)) is not None:
+            msg.append({MonitoringMsgKeys.TYPE: MonitoringMsgTypes.MOCKUP_OFFLINE, MonitoringMsgKeys.ROBUSTNESS_VALUE: v})
+        if (v := latest(sim_latency_robustness)) is not None:
+            msg.append({MonitoringMsgKeys.TYPE: MonitoringMsgTypes.SIMULATION_OFFLINE, MonitoringMsgKeys.ROBUSTNESS_VALUE: v})
+        if (v := latest(mockup_velocity_robustness)) is not None:
+            msg.append({MonitoringMsgKeys.TYPE: MonitoringMsgTypes.MAX_VELOCITY_EXCEEDED, MonitoringMsgKeys.ROBUSTNESS_VALUE: v})
+        if (v := latest(mockup_acceleration_robustness)) is not None:
+            msg.append({MonitoringMsgKeys.TYPE: MonitoringMsgTypes.MAX_ACCELERATION_EXCEEDED, MonitoringMsgKeys.ROBUSTNESS_VALUE: v})
+        for i in range(6):
+            if (v := latest(mockup_stuck_joint_robustness[i])) is not None:
+                msg.append({MonitoringMsgKeys.TYPE: getattr(MonitoringMsgTypes, f"STUCK_JOINT_{i}"), MonitoringMsgKeys.ROBUSTNESS_VALUE: v})
+        if (v := latest(sim_vs_mockup_robustness)) is not None:
+            msg.append({MonitoringMsgKeys.TYPE: MonitoringMsgTypes.Q_MISSMATCH, MonitoringMsgKeys.ROBUSTNESS_VALUE: v})
+        if (v := latest(mockup_tcp_robustness)) is not None:
+            msg.append({MonitoringMsgKeys.TYPE: MonitoringMsgTypes.TCP_MISSMATCH, MonitoringMsgKeys.ROBUSTNESS_VALUE: v})
+        
+        return msg
+    
+    def create_monitoring_recorder_msg(self,
+                              mockup_latency_robustness,
+                              sim_latency_robustness,
+                              mockup_velocity_robustness,
+                              mockup_acceleration_robustness,
+                              mockup_stuck_joint_robustness,
+                              sim_vs_mockup_robustness,
+                              mockup_tcp_robustness):
+        timestamp = datetime.fromtimestamp(time.time(), timezone.utc).isoformat()
         fields = {}
 
         def latest(verdicts):
@@ -497,11 +548,9 @@ class MonitoringService:
 
         # Rosi robustness values (tuple → lower and upper bound fields)
         if (v := latest(sim_vs_mockup_robustness)) is not None:
-            fields["sim_vs_mockup_robustness_lower"] = v[0]
-            fields["sim_vs_mockup_robustness_upper"] = v[1]
+            fields["sim_vs_mockup_robustness"] = v
         if (v := latest(mockup_tcp_robustness)) is not None:
-            fields["mockup_tcp_robustness_lower"] = v[0]
-            fields["mockup_tcp_robustness_upper"] = v[1]
+            fields["mockup_tcp_robustness"] = v
 
         return {
             "measurement": "monitoring_robustness",

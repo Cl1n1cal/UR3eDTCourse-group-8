@@ -15,6 +15,7 @@ class MonitoringMsgKeys:
     """Keys used in monitoring messages sent from the monitoring service."""
 
     TYPE = "type"
+    ROBUSTNESS_VALUE = "robustness_value"
     ROBUSTNESS_UPPER_BOUND = "robustness_upper_bound"
     ROBUSTNESS_LOWER_BOUND = "robustness_lower_bound"
     TIMESTAMP = "timestamp"
@@ -37,6 +38,7 @@ class MonitoringMsgTypes:
     WEAR_JOINT_5 = "Joint 5 Wear"
 
     TCP_MISSMATCH = "TCP Pose Missmatch"
+    Q_MISSMATCH = "Q Missmatch"
 
     MAX_VELOCITY_EXCEEDED = "Max Velocity Exceeded"
     MAX_ACCELERATION_EXCEEDED = "Max Acceleration Exceeded"

@@ -18,6 +18,8 @@ class AlarmManagerService:
         self.current_status = {}
         self.tcp_mismatch_high_threshold = config["tcp_mismatch_high_threshold"]
         self.tcp_mismatch_medium_threshold = config["tcp_mismatch_medium_threshold"]
+        self.q_mismatch_high_threshold = config["q_mismatch_high_threshold"]
+        self.q_mismatch_medium_threshold = config["q_mismatch_medium_threshold"]
         self.max_velocity_exceeded_high_threshold = config["max_velocity_exceeded_high_threshold"]
         self.max_velocity_exceeded_medium_threshold = config["max_velocity_exceeded_medium_threshold"]
         self.max_acceleration_exceeded_high_threshold = config["max_acceleration_exceeded_high_threshold"]
@@ -31,54 +33,59 @@ class AlarmManagerService:
         self.rabbitmq.send_message(routing_key=ROUTING_KEY_RECORDER, message=self.create_alarm_msg())
 
     def handle_monitoring_message(self, ch, method, properties, msg):
-        self._l.debug("Received monitoring message: ", msg)
-        # Check monitor type
-        monitor_type = msg.get(MonitoringMsgKeys.TYPE)
-        if not monitor_type in self.current_status:
-            self._l.warning("Received monitoring message with unknown type: ", monitor_type)
+        self._l.debug(f"Received monitoring message: {msg}")
+        if not isinstance(msg, list):
+            self._l.warning(f"Received monitoring message with invalid format: {msg}")
             return
-        # Evaluate the new status based on the robustness value and the thresholds defined for each monitor type
-        next_status = self.evaluate_status(msg)
-        # if any status has changed, send alarm message to rabbitmq with new status and severity
-        if next_status != self.current_status:
-            self._l.info("Alarm status changed: ", next_status)
-            self.current_status = next_status
-            self.rabbitmq.send_message(routing_key=ROUTING_KEY_RECORDER, message=self.create_alarm_msg())
+        # Check monitor type
+        for rob in msg:
+            # Evaluate the new status based on the robustness value and the thresholds defined for each monitor type
+            self.evaluate_status(rob)
+        self.rabbitmq.send_message(routing_key=ROUTING_KEY_RECORDER, message=self.create_alarm_msg())
     
-    def evaluate_status(self, msg):
-        monitor_type = msg.get(MonitoringMsgKeys.TYPE)
-        robustness_value = get_robustness(msg)
+    def evaluate_status(self, rob):
+        monitor_type = rob.get(MonitoringMsgKeys.TYPE)
+        robustness_value = get_robustness(rob)
         if robustness_value is None:
-            self._l.info("Received monitoring message with non-conclusive bounds: ", msg)
-        next_status = self.current_status
+            self._l.info(f"Received monitoring message with non-conclusive bounds: {rob}")
         match monitor_type:
                 case MonitoringMsgTypes.STUCK_JOINT_0 | MonitoringMsgTypes.STUCK_JOINT_1 | MonitoringMsgTypes.STUCK_JOINT_2 | MonitoringMsgTypes.STUCK_JOINT_3 | MonitoringMsgTypes.STUCK_JOINT_4 | MonitoringMsgTypes.STUCK_JOINT_5:
-                    next_status[monitor_type] = self.evaluate_stuck_joint(robustness_value)
+                    self.current_status[monitor_type] = self.evaluate_stuck_joint(robustness_value)
 
                 case MonitoringMsgTypes.WEAR_JOINT_0 | MonitoringMsgTypes.WEAR_JOINT_1 | MonitoringMsgTypes.WEAR_JOINT_2 | MonitoringMsgTypes.WEAR_JOINT_3 | MonitoringMsgTypes.WEAR_JOINT_4 | MonitoringMsgTypes.WEAR_JOINT_5:
                     pass
 
                 case MonitoringMsgTypes.TCP_MISSMATCH:
-                    next_status[monitor_type] = self.evaluate_tcp_mismatch(robustness_value)
+                    self.current_status[monitor_type] = self.evaluate_tcp_mismatch(robustness_value)
 
                 case MonitoringMsgTypes.MAX_VELOCITY_EXCEEDED:
-                    next_status[monitor_type] = self.evaluate_max_velocity_exceeded(robustness_value)
+                    self.current_status[monitor_type] = self.evaluate_max_velocity_exceeded(robustness_value)
 
                 case MonitoringMsgTypes.MAX_ACCELERATION_EXCEEDED:
-                    next_status[monitor_type] = self.evaluate_max_acceleration_exceeded(robustness_value)
+                    self.current_status[monitor_type] = self.evaluate_max_acceleration_exceeded(robustness_value)
 
                 case MonitoringMsgTypes.SIMULATION_OFFLINE:
-                    next_status[monitor_type] = self.evaluate_simulation_offline(robustness_value)
+                    self.current_status[monitor_type] = self.evaluate_simulation_offline(robustness_value)
 
                 case MonitoringMsgTypes.MOCKUP_OFFLINE:
-                    next_status[monitor_type] = self.evaluate_mockup_offline(robustness_value)
+                    self.current_status[monitor_type] = self.evaluate_mockup_offline(robustness_value)
+                case MonitoringMsgTypes.Q_MISSMATCH:
+                    self.current_status[monitor_type] = self.evaluate_q_mismatch(robustness_value)
                 case _:
-                    self._l.warning("Received monitoring message with unknown type: ", monitor_type)
+                    self._l.warning(f"Received monitoring message with unknown type: {monitor_type}")
 
-        return next_status
+    def evaluate_q_mismatch(self, robustness_value):
+        if robustness_value < self.q_mismatch_high_threshold:
+            return AlarmSeverity.HIGH
+        elif robustness_value < self.q_mismatch_medium_threshold:
+            return AlarmSeverity.MEDIUM
+        elif robustness_value < 0:
+            return AlarmSeverity.LOW
+        else:
+            return AlarmSeverity.NONE
 
     def evaluate_stuck_joint(self, robustness_value):
-        if robustness_value < 0.0:
+        if robustness_value >= 0.0:
             return AlarmSeverity.HIGH
         else:
             return AlarmSeverity.NONE
@@ -130,9 +137,8 @@ class AlarmManagerService:
 
         fields = {}
         #create fields for all alarm types with their severity as value
-        for alarm_type, severity in self.current_status.items():
-            if severity != AlarmSeverity.NONE:
-                fields[alarm_type] = severity.value
+        for monitor_type in self.current_status:
+            fields[monitor_type] = self.current_status[monitor_type].value
 
         rdata = {
             "measurement": "alarm_status",
@@ -142,7 +148,7 @@ class AlarmManagerService:
             },
             "fields": fields,
         }
-        print(f"Created alarm message: {rdata}")
+        self._l.debug(f"Created alarm message: {rdata}")
         return rdata
 
     def start_serving(self):
@@ -154,6 +160,10 @@ class AlarmManagerService:
             self._l.info("Alarm Manager Service stopped by user.")
 
 def get_robustness(msg):
+    robustness_value = msg.get(MonitoringMsgKeys.ROBUSTNESS_VALUE)
+    if robustness_value is not None:
+        return robustness_value
+    
     robustness_lower = msg.get(MonitoringMsgKeys.ROBUSTNESS_LOWER_BOUND)
     robustness_upper = msg.get(MonitoringMsgKeys.ROBUSTNESS_UPPER_BOUND)
 
