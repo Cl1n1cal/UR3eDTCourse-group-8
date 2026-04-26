@@ -270,6 +270,8 @@ class MonitoringService:
         return output.verdicts()
     
     def compute_mockup_velocity_robustness(self, mockup_data):
+        if self.mockup_velocity_monitor is None:
+            raise RuntimeError("Monitor is not initialized. Call start_monitoring() first.")        
         if mockup_data is None:
             return None
         
