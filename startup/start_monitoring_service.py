@@ -8,7 +8,6 @@ This module starts the monitoring service found in ../services/monitoring_servic
 def start_monitoring_service(ok_queue=None):
     config = load_config("startup/startup.conf")
     period = max(config["digital_twin"]["robot_model"]["publish_period"], 1/config["physical_twin"]["pt_mockup"]["publish_frequency"])
-    print(f"Monitoring service step period: {period} seconds")
     monitoring_service = MonitoringService(period)
     monitoring_service.setup(monitoring_config=config["digital_twin"]["monitoring_service"])
 

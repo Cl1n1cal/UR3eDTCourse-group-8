@@ -182,7 +182,7 @@ class MonitoringService:
     
     def monitor_loop(self):
         self.initialize_monitor()
-        time.sleep(self.milliseconds_to_seconds(self.sample_delay)*2) # Wait for some data to be published before starting the monitoring loop
+        time.sleep(self.milliseconds_to_seconds(self.sample_delay)*10) # Wait for some data to be published before starting the monitoring loop
 
         while True:
             time.sleep(self.step_period)

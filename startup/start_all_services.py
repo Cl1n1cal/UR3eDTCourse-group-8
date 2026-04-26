@@ -12,6 +12,7 @@ from startup.start_calibration_service import start_calibration_service
 from startup.utils.logging_config import setup_root_logging
 from startup.start_visualization_service import start_visualization_service
 from startup.start_command_sender import start_command_sender
+from startup.start_alarm_manager_service import start_alarm_manager_service
 
 def signal_handler(sig, frame):
     sys.exit(0)
@@ -27,6 +28,7 @@ if __name__ == "__main__":
     start_as_daemon(start_sim_service)
     start_as_daemon(start_calibration_service)
     start_as_daemon(start_monitoring_service)
+    start_as_daemon(start_alarm_manager_service)
     start_as_daemon(start_command_sender)
     start_as_daemon(start_visualization_service)
     

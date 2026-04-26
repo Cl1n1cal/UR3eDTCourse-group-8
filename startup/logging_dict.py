@@ -28,7 +28,7 @@ LOGGING_CONFIG = {
             'propagate': True
         },
         'db_recorder_service': {
-            'level': 'DEBUG',
+            'level': 'INFO',
             'handlers': [],
             'propagate': True
         },
