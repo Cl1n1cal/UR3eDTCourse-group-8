@@ -9,6 +9,7 @@ ROUTING_KEY_CTRL = "robotarm.ctrl"
 ROUTING_KEY_RECORDER = "robotarm.recorder.#"
 ROUTING_KEY_CALIBRATION = "robotarm.model.calibration"
 ROUTING_KEY_MONITORING = "robotarm.monitoring"
+ROUTING_KEY_ELECTRICITY = "robotarm.model.electricity"
 
 ### MESSAGES
 class MonitoringMsgKeys:
