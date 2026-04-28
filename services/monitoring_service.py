@@ -36,7 +36,7 @@ class MonitoringService:
         self.mockup_latency_formula = "(time_diff < $mockup_max_latency)"
         self.sim_latency_formula = "(time_diff < $sim_max_latency)"
         self.mockup_velocity_formula = "(qd <= $mockup_max_velocity)" # Cannot compare two signals so have to use a variable
-        self.mockup_acceleration_formula = "(qdd <= mockup_max_acceleration)"
+        self.mockup_acceleration_formula = "(qdd <= $mockup_max_acceleration)"
         self.mockup_stuck_joint_formula = "(qd <= $stuck_joint_qd_threshold && q_diff > $stuck_joint_q_difference_threshold && robot_mode >= 1)" # does not have == for the robot_mode
         self.sim_vs_mockup_formula = "(q_diff < $max_q_error && q_diff > $min_q_error)"
         self.mockup_tcp_formula = "(q_diff < $max_q_error && q_diff > $min_q_error)"
@@ -186,10 +186,10 @@ class MonitoringService:
         self.initialize_monitor()
         time.sleep(self.wait_time) # Make sure everything is set up before starting to monitor
         time.sleep(self.milliseconds_to_seconds(self.sample_delay)) # Wait for some data to be published before starting the monitoring loop
+        self._l.info("Woke up! Starting monitoring loop now.")
 
         while True:
             time.sleep(self.step_period)
-
             # Fetch mockup and sim data in parallel
             results = self.get_historical_data()
             mockup_data = results.get("mockup_state")
@@ -201,6 +201,7 @@ class MonitoringService:
             # Extract last record for latency checks
             time_stamp = time.time()
             mockup_latency_robustness = self.compute_latency_robustness(mockup_data, "mockup_state", time_stamp)
+
             sim_latency_robustness = self.compute_latency_robustness(sim_data, "simulation_state", time_stamp)
 
             # Mockup velocity
@@ -218,7 +219,7 @@ class MonitoringService:
             sim_vs_mockup_robustness = self.compute_sim_vs_mockup_robustness(mockup_data, sim_data)
 
             # Mockup tcp robustness
-            mockup_tcp_robustness = self.compute_mockup_tcp_robustness(mockup_data)
+            mockup_tcp_robustness = self.compute_mockup_tcp_robustness(mockup_data, sim_data)
             
             self._l.debug(f"mockup latency robustness: {mockup_latency_robustness}")
             self._l.debug(f"sim latency robustness: {sim_latency_robustness}")
@@ -411,16 +412,16 @@ class MonitoringService:
         )
         return output.verdicts()
     
-    def compute_mockup_tcp_robustness(self, mockup_data):
+    def compute_mockup_tcp_robustness(self, mockup_data, sim_data):
         if self.mockup_tcp_monitor is None:
             raise RuntimeError("Monitor is not initialized. Call start_monitoring() first.")
 
-        if mockup_data is None:
+        if mockup_data is None or sim_data is None:
             self._l.debug(f"Skipping robustness computation mockup data was None")
             return None
 
         # Calculate difference between mockup and sim values for q_actual
-        error = sum((mockup_data[f"q_actual_{i}"] - mockup_data[f"q_actual_{i}"])**2 for i in range(6))**0.5
+        error = sum((mockup_data[f"tcp_pose_{i}"] - sim_data[f"tcp_pose_{i}"])**2 for i in range(6))**0.5
         
         # Get the time stamp from mockup data
         time_stamp = mockup_data["time_stamp"]
@@ -433,7 +434,7 @@ class MonitoringService:
     def get_historical_data(self):
         query = f'''
         from(bucket: "{self.influxdb_bucket}")
-        |> range(start: -1h, stop: -{self.sample_delay}ms)
+        |> range(start: -{self.wait_time}s, stop: -{self.sample_delay}ms)
         |> filter(fn: (r) => r._measurement == "mockup_state" or r._measurement == "simulation_state")
         |> filter(fn: (r) => contains(value: r._field, set: [
             "joint_max_acceleration","joint_max_speed",
