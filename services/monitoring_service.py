@@ -185,7 +185,6 @@ class MonitoringService:
     def monitor_loop(self):
         self.initialize_monitor()
         time.sleep(self.wait_time) # Make sure everything is set up before starting to monitor
-        time.sleep(self.milliseconds_to_seconds(self.sample_delay)) # Wait for some data to be published before starting the monitoring loop
         self._l.info("Woke up! Starting monitoring loop now.")
 
         while True:
