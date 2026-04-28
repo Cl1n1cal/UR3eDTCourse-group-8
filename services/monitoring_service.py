@@ -37,7 +37,7 @@ class MonitoringService:
         self.sim_latency_formula = "(time_diff < $sim_max_latency)"
         self.mockup_velocity_formula = "(qd <= $mockup_max_velocity)" # Cannot compare two signals so have to use a variable
         self.mockup_acceleration_formula = "(qdd <= $mockup_max_acceleration)"
-        self.mockup_stuck_joint_formula = "(qd <= $stuck_joint_qd_threshold && q_diff > $stuck_joint_q_difference_threshold && robot_mode >= 1)" # does not have == for the robot_mode
+        self.mockup_stuck_joint_formula = "(qd < $stuck_joint_qd_threshold && q_diff > $stuck_joint_q_difference_threshold)" 
         self.sim_vs_mockup_formula = "(q_diff < $max_q_error && q_diff > $min_q_error)"
         self.mockup_tcp_formula = "(q_diff < $max_q_error && q_diff > $min_q_error)"
 
@@ -320,21 +320,14 @@ class MonitoringService:
         if mockup_data is None:
             return None
         
-        robot_mode_from_data = mockup_data["robot_mode"]
-        if robot_mode_from_data == "Running":
-            self.robot_mode = 1
-        else:
-            self.robot_mode = 0
-        
         time_stamp = mockup_data["time_stamp"]
-        qd = mockup_data[f"qd_actual_{joint}"]
-        q_diff = mockup_data[f"q_target_{joint}"] - mockup_data[f"q_actual_{joint}"]
+        qd = abs(mockup_data[f"qd_actual_{joint}"])
+        q_diff = abs(mockup_data[f"q_target_{joint}"] - mockup_data[f"q_actual_{joint}"])
        
 
         batch = {
             "qd" : [(qd, time_stamp)],
             "q_diff" : [(q_diff, time_stamp)],
-            "robot_mode" : [(self.robot_mode, time_stamp)]
         }
 
         monitors = [
