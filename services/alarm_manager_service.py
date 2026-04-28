@@ -85,7 +85,7 @@ class AlarmManagerService:
             return AlarmSeverity.NONE
 
     def evaluate_stuck_joint(self, robustness_value):
-        if robustness_value >= 0.0:
+        if robustness_value < 0.0:
             return AlarmSeverity.HIGH
         else:
             return AlarmSeverity.NONE
