@@ -1,5 +1,6 @@
 import signal
 import sys
+import time
 from startup.start_monitoring_service import start_monitoring_service
 from startup.utils.start_as_daemon import start_as_daemon
 from startup.start_docker_rabbitmq import start_docker_rabbitmq
@@ -16,29 +17,48 @@ from startup.start_alarm_manager_service import start_alarm_manager_service
 from startup.start_electricity_service import start_electricity_service
 from startup.start_joint_rotation_counter_service import start_joint_rotation_counter_service
 
-def signal_handler(sig, frame):
+_processes = []
+
+def _shutdown(sig=None, frame=None):
+    print("\nShutting down all services…")
+    for p in _processes:
+        try:
+            p.terminate()
+        except Exception:
+            pass
+    # Give them a moment, then force-kill
+    deadline = time.time() + 3.0
+    for p in _processes:
+        remaining = max(0.0, deadline - time.time())
+        p.join(timeout=remaining)
+        if p.is_alive():
+            p.kill()
+    print("All services stopped.")
     sys.exit(0)
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, signal_handler)  # Handle ^C
+    signal.signal(signal.SIGINT,  _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
+
     setup_root_logging("all_service_logs")
     start_docker_rabbitmq()
     start_docker_influxdb()
-    start_as_daemon(start_db_recorder_service)
-    start_as_daemon(start_mockup_state_publisher)
-    start_as_daemon(start_robot_arm_mockup)
-    start_as_daemon(start_sim_service)
-    start_as_daemon(start_calibration_service)
-    start_as_daemon(start_monitoring_service)
-    start_as_daemon(start_alarm_manager_service)
-    start_as_daemon(start_electricity_service)
-    start_as_daemon(start_command_sender)
-    start_as_daemon(start_visualization_service)
-    start_as_daemon(start_joint_rotation_counter_service)
-    
-    # Keep the main process alive to handle signals
+
+    _processes.append(start_as_daemon(start_db_recorder_service))
+    _processes.append(start_as_daemon(start_mockup_state_publisher))
+    _processes.append(start_as_daemon(start_robot_arm_mockup))
+    _processes.append(start_as_daemon(start_sim_service))
+    _processes.append(start_as_daemon(start_calibration_service))
+    _processes.append(start_as_daemon(start_monitoring_service))
+    _processes.append(start_as_daemon(start_alarm_manager_service))
+    _processes.append(start_as_daemon(start_electricity_service))
+    _processes.append(start_as_daemon(start_joint_rotation_counter_service))
+    _processes.append(start_as_daemon(start_command_sender))
+    _processes.append(start_as_daemon(start_visualization_service))
+
+    # Keep main thread alive; works on Windows and Unix
     try:
         while True:
-            signal.pause()  # Wait for signals
+            time.sleep(1)
     except KeyboardInterrupt:
-        signal_handler(None, None)  # Fallback if signal.pause fails
+        _shutdown()
