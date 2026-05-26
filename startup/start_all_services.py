@@ -56,7 +56,6 @@ if __name__ == "__main__":
     _processes.append(start_as_daemon(start_command_sender))
     _processes.append(start_as_daemon(start_visualization_service))
 
-    # Keep main thread alive; works on Windows and Unix
     try:
         while True:
             time.sleep(1)
