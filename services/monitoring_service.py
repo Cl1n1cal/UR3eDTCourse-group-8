@@ -6,6 +6,7 @@ from startup.utils.logging_config import create_service_logger
 import time
 from datetime import datetime, timezone
 import utils.monitors as monitors
+from utils.monitors import JointRotationMonitor
 
 class MonitoringService:
     def __init__(self, step_period):
@@ -35,6 +36,7 @@ class MonitoringService:
         self.min_q_error = 0.0 # conf file
         self.wait_time = 0.0 # conf file
         self.old_mockup_data = None
+        self.joint_rotation_threshold = 0.0 # conf file
       
     def setup(self, monitoring_config):
         self._l.info("Monitoring setup with config ", monitoring_config)
@@ -54,6 +56,7 @@ class MonitoringService:
         self.stuck_joint_qd_threshold = monitoring_config["stuck_joint_qd_threshold"]
         self.max_q_error = monitoring_config["max_q_error"]
         self.wait_time = monitoring_config["wait_time"]
+        self.joint_rotation_threshold = float(monitoring_config.get("joint_rotation_threshold", 0.0))
 
         self.monitors = [monitors.LatencyMonitor(self.sim_max_latency, self.sample_delay, "simulation"),
                          monitors.LatencyMonitor(self.mockup_max_latency, self.sample_delay, "mockup"),
@@ -66,7 +69,13 @@ class MonitoringService:
                          monitors.StuckJointMonitor(joint_index=2, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold),
                          monitors.StuckJointMonitor(joint_index=3, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold),
                          monitors.StuckJointMonitor(joint_index=4, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold),
-                         monitors.StuckJointMonitor(joint_index=5, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold)
+                         monitors.StuckJointMonitor(joint_index=5, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold),
+                         JointRotationMonitor(joint_index=0, rotation_threshold=self.joint_rotation_threshold),
+                         JointRotationMonitor(joint_index=1, rotation_threshold=self.joint_rotation_threshold),
+                         JointRotationMonitor(joint_index=2, rotation_threshold=self.joint_rotation_threshold),
+                         JointRotationMonitor(joint_index=3, rotation_threshold=self.joint_rotation_threshold),
+                         JointRotationMonitor(joint_index=4, rotation_threshold=self.joint_rotation_threshold),
+                         JointRotationMonitor(joint_index=5, rotation_threshold=self.joint_rotation_threshold),
                          ]
         
         self._l.info("Monitoring service initialized with monitors:")
