@@ -210,3 +210,6 @@ __marimo__/
 
 # # InfluxDB
 */InfluxDB/engine/
+
+# Fallback joint lifecycle data
+joint_lifecycle.json

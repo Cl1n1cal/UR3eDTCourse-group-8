@@ -12,7 +12,7 @@ from startup.start_docker_influxdb import start_docker_influxdb
 from startup.start_calibration_service import start_calibration_service
 from startup.utils.logging_config import setup_root_logging
 from startup.start_visualization_service import start_visualization_service
-from startup.start_command_sender import start_command_sender
+from startup.start_dashboard import start_dashboard
 from startup.start_alarm_manager_service import start_alarm_manager_service
 from startup.start_electricity_service import start_electricity_service
 from startup.start_joint_rotation_counter_service import start_joint_rotation_counter_service
@@ -26,7 +26,6 @@ def _shutdown(sig=None, frame=None):
             p.terminate()
         except Exception:
             pass
-    # Give them a moment, then force-kill
     deadline = time.time() + 3.0
     for p in _processes:
         remaining = max(0.0, deadline - time.time())
@@ -53,7 +52,7 @@ if __name__ == "__main__":
     _processes.append(start_as_daemon(start_alarm_manager_service))
     _processes.append(start_as_daemon(start_electricity_service))
     _processes.append(start_as_daemon(start_joint_rotation_counter_service))
-    _processes.append(start_as_daemon(start_command_sender))
+    _processes.append(start_as_daemon(start_dashboard))
     _processes.append(start_as_daemon(start_visualization_service))
 
     try:
