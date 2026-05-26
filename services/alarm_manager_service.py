@@ -71,6 +71,13 @@ class AlarmManagerService:
                     self.current_status[monitor_type] = self.evaluate_mockup_offline(robustness_value)
                 case MonitoringMsgTypes.Q_MISSMATCH:
                     self.current_status[monitor_type] = self.evaluate_q_mismatch(robustness_value)
+                case MonitoringMsgTypes.JOINT_ROTATION_THRESHOLD_0 | \
+                     MonitoringMsgTypes.JOINT_ROTATION_THRESHOLD_1 | \
+                     MonitoringMsgTypes.JOINT_ROTATION_THRESHOLD_2 | \
+                     MonitoringMsgTypes.JOINT_ROTATION_THRESHOLD_3 | \
+                     MonitoringMsgTypes.JOINT_ROTATION_THRESHOLD_4 | \
+                     MonitoringMsgTypes.JOINT_ROTATION_THRESHOLD_5:
+                    pass
                 case _:
                     self._l.warning(f"Received monitoring message with unknown type: {monitor_type}")
 
