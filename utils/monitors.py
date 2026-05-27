@@ -129,8 +129,9 @@ class VelocityMonitor(UR3eMonitor):
     largest joint velocity observed in the sample. The variable `$max_velocity`
     is kept in sync with the sample's reported joint max speed.
     """
-    def __init__(self, max_velocity):
+    def __init__(self, max_velocity, window_seconds: float = 0.0):
         self.max_velocity = max_velocity
+        self.window_seconds = max(0.0, float(window_seconds))
         self._monitor = self._initialize_monitor()
 
     @property
@@ -147,7 +148,7 @@ class VelocityMonitor(UR3eMonitor):
 
     @property
     def formula(self) -> str:
-        return "(qd < $max_velocity)"
+        return f"G[0,{self.window_seconds}](qd < $max_velocity)"
 
     def _initialize_monitor(self) -> mstlo.Monitor:
         vars = mstlo.Variables()
@@ -191,8 +192,9 @@ class AccelerationMonitor(UR3eMonitor):
     `qd_actual_<i>` values and dividing by the elapsed time between samples.
     It retains the last `mockup_data` to compute deltas on the next update.
     """
-    def __init__(self, max_acceleration):
+    def __init__(self, max_acceleration, window_seconds: float = 0.0):
         self.max_acceleration = max_acceleration
+        self.window_seconds = max(0.0, float(window_seconds))
         self._monitor = self._initialize_monitor()
         self.old_mockup_data = None
 
@@ -210,7 +212,7 @@ class AccelerationMonitor(UR3eMonitor):
 
     @property
     def formula(self) -> str:
-        return "(qdd < $max_acceleration)"
+        return f"G[0,{self.window_seconds}](qdd < $max_acceleration)"
 
     def _initialize_monitor(self) -> mstlo.Monitor:
         vars = mstlo.Variables()
@@ -274,7 +276,7 @@ class AccelerationMonitor(UR3eMonitor):
         return output.verdicts()
     
 class StuckJointMonitor(UR3eMonitor):
-    def __init__(self, joint_index: int, qd_threshold: float = 0.01, q_diff_threshold: float = 0.1):
+    def __init__(self, joint_index: int, qd_threshold: float = 0.01, q_diff_threshold: float = 0.1, window_seconds: float = 0.0):
         """Monitor that detects a stuck joint by checking low joint velocity and
         a large difference between target and actual joint angle.
 
@@ -286,6 +288,7 @@ class StuckJointMonitor(UR3eMonitor):
         self.joint_index = int(joint_index)
         self.qd_threshold = qd_threshold
         self.q_diff_threshold = q_diff_threshold
+        self.window_seconds = max(0.0, float(window_seconds))
         self._monitor = self._initialize_monitor()
         self.old_mockup_data = None
 
@@ -307,7 +310,7 @@ class StuckJointMonitor(UR3eMonitor):
         # robot_mode is encoded as 1 for Running and 0 for Idle so the formula
         # stays true while the robot is idle and only checks for sticking when
         # the robot is running.
-        return "(robot_mode < 0.5 || qd > $qd_threshold || q_diff < $q_diff_threshold)"
+        return f"G[0,{self.window_seconds}](robot_mode < 0.5 || qd > $qd_threshold || q_diff < $q_diff_threshold)"
 
     def _initialize_monitor(self) -> mstlo.Monitor:
         variables = mstlo.Variables()
@@ -351,7 +354,7 @@ class StuckJointMonitor(UR3eMonitor):
 
 
 class MismatchMonitor(UR3eMonitor):
-    def __init__(self, diff_type: str, max_error: float):
+    def __init__(self, diff_type: str, max_error: float, window_seconds: float = 0.0):
         """Generic monitor for comparing mockup <-> simulation.
 
         Args:
@@ -360,6 +363,7 @@ class MismatchMonitor(UR3eMonitor):
         """
         self.diff_type = diff_type
         self.max_error = max_error
+        self.window_seconds = max(0.0, float(window_seconds))
         self._monitor = self._initialize_monitor()
 
     @property
@@ -380,7 +384,7 @@ class MismatchMonitor(UR3eMonitor):
 
     @property
     def formula(self) -> str:
-        return "(q_diff < $max_error)"
+        return f"G[0,{self.window_seconds}](q_diff < $max_error)"
 
     def _initialize_monitor(self) -> mstlo.Monitor:
         variables = mstlo.Variables()
