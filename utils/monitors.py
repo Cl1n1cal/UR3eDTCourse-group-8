@@ -1,7 +1,7 @@
 from abc import abstractmethod
 import mstlo_python as mstlo
 from typing import List, Tuple, Union
-from communication.protocol import MonitoringMsgKeys, MonitoringMsgTypes, RobotArmStateKeys
+from communication.protocol import MonitoringMsgKeys, MonitoringMsgTypes, RobotArmStateKeys, RobotMode
 import numpy as np
 
 from utils.calculation_functions import milliseconds_to_seconds
@@ -287,6 +287,7 @@ class StuckJointMonitor(UR3eMonitor):
         self.qd_threshold = qd_threshold
         self.q_diff_threshold = q_diff_threshold
         self._monitor = self._initialize_monitor()
+        self.old_mockup_data = None
 
     @property
     def name(self) -> str:
@@ -302,10 +303,11 @@ class StuckJointMonitor(UR3eMonitor):
 
     @property
     def formula(self) -> str:
-        # The monitor expects two signals: 'qd' and 'q_diff'. The formula returns
-        # true when the joint is NOT stuck (movement > threshold or q_diff small),
-        # so violations correspond to a stuck joint.
-        return "(qd > $qd_threshold || q_diff < $q_diff_threshold)"
+        # The monitor expects three signals: 'qd', 'q_diff', and 'robot_mode'.
+        # robot_mode is encoded as 1 for Running and 0 for Idle so the formula
+        # stays true while the robot is idle and only checks for sticking when
+        # the robot is running.
+        return "(robot_mode < 0.5 || qd > $qd_threshold || q_diff < $q_diff_threshold)"
 
     def _initialize_monitor(self) -> mstlo.Monitor:
         variables = mstlo.Variables()
@@ -317,23 +319,34 @@ class StuckJointMonitor(UR3eMonitor):
     def compute_robustness(self, *args) -> List[Tuple[float, Union[bool, float, Tuple[float, float]]]] | None:
         """Expect a single argument: mockup_data dict containing keys for this joint.
 
-        The method produces a batch update with the two signals the monitor expects
+        The method produces a batch update with the signals the monitor expects
         and returns the monitor verdicts.
         """
         mockup_data = args[0]
         if mockup_data is None:
             return None
 
+        if self.old_mockup_data is None:
+            self.old_mockup_data = mockup_data.copy()
+            return None
+
         time_stamp = mockup_data["time_stamp"]
-        qd = abs(mockup_data[f"qd_actual_{self.joint_index}"])
+        time_diff = time_stamp - self.old_mockup_data["time_stamp"]
+        if time_diff == 0.0:
+            return None
+
+        qd = abs(mockup_data[f"q_actual_{self.joint_index}"] - self.old_mockup_data[f"q_actual_{self.joint_index}"]) / time_diff
         q_diff = abs(mockup_data[f"q_target_{self.joint_index}"] - mockup_data[f"q_actual_{self.joint_index}"])
+        robot_mode = 1.0 if mockup_data.get(RobotArmStateKeys.ROBOT_MODE) == RobotMode.ROBOT_MODE_RUNNING else 0.0
 
         batch = {
             "qd": [(qd, time_stamp)],
             "q_diff": [(q_diff, time_stamp)],
+            "robot_mode": [(robot_mode, time_stamp)],
         }
 
         output = self.monitor.update_batch(batch)
+        self.old_mockup_data = mockup_data.copy()
         return output.verdicts()
 
 
