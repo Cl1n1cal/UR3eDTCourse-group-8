@@ -47,7 +47,7 @@ LOGGING_CONFIG = {
             'handlers': [],
             'propagate': True
         },
-        'alarm_manager_service': {
+        'fault_correction_service': {
             'level': 'DEBUG',
             'handlers': [],
             'propagate': True

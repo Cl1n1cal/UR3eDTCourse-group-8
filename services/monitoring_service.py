@@ -188,7 +188,7 @@ class MonitoringService:
             robustness = self.robustness_results[monitor.name]
             verdict = monitors.UR3eMonitor.latest(robustness)
             if verdict is None:
-                self._l.warning(f"No robustness value found for monitor {monitor.name}. Skipping recording for this monitor.")
+                self._l.debug(f"No robustness value found for monitor {monitor.name}. Skipping recording for this monitor.")
                 continue
             fields[monitor.name] = verdict
 
