@@ -6,8 +6,12 @@ from startup.utils.logging_config import create_service_logger
 import time
 from datetime import datetime, timezone
 import utils.monitors as monitors
+from typing import Dict, List, Tuple, Union, cast
+RobustnessVerdict = Tuple[float, Union[bool, float, Tuple[float, float]]]
 
 class MonitoringService:
+
+
     def __init__(self, step_period):
         self.write_api = None
         self.influx_db_org = None
@@ -20,7 +24,7 @@ class MonitoringService:
         self.monitors = []
 
         # Robustness results
-        self.robustness_results = {}
+        self.robustness_results: Dict[str, List[RobustnessVerdict]] = {}
 
         # Other
         self.time_stamp = time.time()
@@ -57,23 +61,23 @@ class MonitoringService:
         self.wait_time = monitoring_config["wait_time"]
 
         self.monitors = [monitors.LatencyMonitor(self.sim_max_latency, self.sample_delay, "simulation"),
-                 monitors.LatencyMonitor(self.mockup_max_latency, self.sample_delay, "mockup"),
-             monitors.VelocityMonitor(self.mockup_max_velocity, window_seconds=self.monitor_window_seconds),
-             monitors.AccelerationMonitor(self.mockup_max_acceleration, window_seconds=self.monitor_window_seconds),
-             monitors.MismatchMonitor("q", self.max_q_error, window_seconds=self.monitor_window_seconds),
-             monitors.MismatchMonitor("tcp", self.max_q_error, window_seconds=self.monitor_window_seconds),
-             monitors.StuckJointMonitor(joint_index=0, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
-             monitors.StuckJointMonitor(joint_index=1, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
-             monitors.StuckJointMonitor(joint_index=2, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
-             monitors.StuckJointMonitor(joint_index=3, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
-             monitors.StuckJointMonitor(joint_index=4, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
-             monitors.StuckJointMonitor(joint_index=5, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds)
-                         ]
+                        monitors.LatencyMonitor(self.mockup_max_latency, self.sample_delay, "mockup"),
+                        monitors.VelocityMonitor(self.mockup_max_velocity, window_seconds=self.monitor_window_seconds),
+                        monitors.AccelerationMonitor(self.mockup_max_acceleration, window_seconds=self.monitor_window_seconds),
+                        monitors.MismatchMonitor("q", self.max_q_error, window_seconds=self.monitor_window_seconds),
+                        monitors.MismatchMonitor("tcp", self.max_q_error, window_seconds=self.monitor_window_seconds),
+                        monitors.StuckJointMonitor(joint_index=0, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
+                        monitors.StuckJointMonitor(joint_index=1, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
+                        monitors.StuckJointMonitor(joint_index=2, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
+                        monitors.StuckJointMonitor(joint_index=3, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
+                        monitors.StuckJointMonitor(joint_index=4, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
+                        monitors.StuckJointMonitor(joint_index=5, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds)
+                        ]
         
         self._l.info("Monitoring service initialized with monitors:")
         for monitor in self.monitors:
-            self._l.info(f" - {monitor.name}:")
-            self._l.info(f"   {monitor.monitor}")
+            self._l.info(f" - {monitor.type}:")
+            self._l.info(f"   {monitor.formula}")
 
     def cleanup(self):
         self.rabbitmq.close()
@@ -104,7 +108,7 @@ class MonitoringService:
             # Extract last record for latency checks
             time_stamp = time.time()
             for monitor in self.monitors:
-                self.robustness_results[monitor.name] = monitor.compute_robustness(mockup_data, sim_data, time_stamp)
+                self.robustness_results[monitor.type] = monitor.compute_robustness(mockup_data, sim_data, time_stamp)
             
             for monitor, robustness in self.robustness_results.items():
                 self._l.debug(f"Monitor {monitor} robustness: {robustness}")
@@ -171,10 +175,13 @@ class MonitoringService:
         msg = []
 
         for monitor in self.monitors:
-            robustness = self.robustness_results[monitor.name]
+            robustness = self.robustness_results.get(monitor.type)
+            if not robustness:
+                self._l.debug(f"No robustness value found for monitor {monitor.type}. Skipping message creation for this monitor.")
+                continue
             verdict = monitors.UR3eMonitor.latest(robustness)
             if verdict is None:
-                self._l.debug(f"No robustness value found for monitor {monitor.name}. Skipping message creation for this monitor.")
+                self._l.debug(f"No robustness value found for monitor {monitor.type}. Skipping message creation for this monitor.")
                 continue
             msg.append({MonitoringMsgKeys.TYPE: monitor.type, MonitoringMsgKeys.ROBUSTNESS_VALUE: verdict})
         
@@ -185,12 +192,15 @@ class MonitoringService:
         fields = {}
 
         for monitor in self.monitors:
-            robustness = self.robustness_results[monitor.name]
+            robustness = self.robustness_results.get(monitor.type)
+            if not robustness:
+                self._l.debug(f"No robustness value found for monitor {monitor.type}. Skipping recording for this monitor.")
+                continue
             verdict = monitors.UR3eMonitor.latest(robustness)
             if verdict is None:
-                self._l.debug(f"No robustness value found for monitor {monitor.name}. Skipping recording for this monitor.")
+                self._l.debug(f"No robustness value found for monitor {monitor.type}. Skipping recording for this monitor.")
                 continue
-            fields[monitor.name] = verdict
+            fields[monitor.type] = verdict
 
         return {
             "measurement": "monitoring_robustness",

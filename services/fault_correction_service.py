@@ -13,7 +13,7 @@ class FaultCorrectionService:
         self.rabbitmq = RabbitMQFactory.create_rabbitmq()
         self._l = create_service_logger("fault_correction_service")
         self.last_correction_time = {}
-        self.cooldown_period = 5.0 # seconds
+        self.cooldown_period = config.get("cooldown_period", 5.0) # seconds
 
     def setup(self):
         self._l.info("Fault Correction Service setup")

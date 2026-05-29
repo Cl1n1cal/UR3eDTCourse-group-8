@@ -10,8 +10,7 @@ class UR3eMonitor:
     """Abstract base for UR3e monitor classes.
 
     Subclasses should implement:
-    - `name`: mapping to a `MonitoringMsgTypes` value
-    - `monitor`: the underlying `mstlo.Monitor` instance
+    - `type`: the monitoring message type string to use when sending results
     - `formula`: the temporal logic formula string
     - `initialize_monitor` / `_initialize_monitor`: build the `mstlo.Monitor`
     - `compute_robustness`: accept sample data and return monitor verdicts
@@ -21,17 +20,7 @@ class UR3eMonitor:
 
     @property
     @abstractmethod
-    def name(self) -> str:
-        pass
-    
-    @property
-    @abstractmethod
     def type(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def monitor(self) -> mstlo.Monitor:
         pass
 
     @property
@@ -69,15 +58,6 @@ class LatencyMonitor(UR3eMonitor):
         self._monitor = self._initialize_monitor()
 
     @property
-    def name(self) -> str:
-        if self.s_type == "mockup":
-            return "mockup_latency"
-        elif self.s_type == "simulation":
-            return "simulation_latency"
-        else:
-            return "Unknown Latency Monitor"
-        
-    @property
     def type(self) -> str:
         if self.s_type == "mockup":
             return MonitoringMsgTypes.MOCKUP_OFFLINE
@@ -86,9 +66,7 @@ class LatencyMonitor(UR3eMonitor):
         else:
             return "Unknown Latency Monitor"
 
-    @property
-    def monitor(self) -> mstlo.Monitor:
-        return self._monitor
+    
 
     @property
     def formula(self) -> str:
@@ -116,7 +94,7 @@ class LatencyMonitor(UR3eMonitor):
         sample_time = sample_data["time_stamp"]
         time_diff = np.absolute(sample_time - adj_time)
 
-        output = self.monitor.update(
+        output = self._monitor.update(
             signal="time_diff", value=time_diff, timestamp=adj_time
         )
 
@@ -135,16 +113,8 @@ class VelocityMonitor(UR3eMonitor):
         self._monitor = self._initialize_monitor()
 
     @property
-    def name(self) -> str:
-        return "mockup_velocity"
-
-    @property
     def type(self) -> str:
         return MonitoringMsgTypes.MAX_VELOCITY_EXCEEDED
-
-    @property
-    def monitor(self) -> mstlo.Monitor:
-        return self._monitor
 
     @property
     def formula(self) -> str:
@@ -178,10 +148,10 @@ class VelocityMonitor(UR3eMonitor):
         largest_qd = max(qd_list)
 
         # Update the max velocity variable
-        self.monitor.get_variables().set("max_velocity", max_velocity)
+        self._monitor.get_variables().set("max_velocity", max_velocity)
 
         # Update the qd signal in the monitor
-        output = self.monitor.update('qd', largest_qd, time)
+        output = self._monitor.update('qd', largest_qd, time)
 
         return output.verdicts()
 
@@ -199,16 +169,8 @@ class AccelerationMonitor(UR3eMonitor):
         self.old_mockup_data = None
 
     @property
-    def name(self) -> str:
-        return "mockup_acceleration"
-
-    @property
     def type(self) -> str:
         return MonitoringMsgTypes.MAX_ACCELERATION_EXCEEDED
-
-    @property
-    def monitor(self) -> mstlo.Monitor:
-        return self._monitor
 
     @property
     def formula(self) -> str:
@@ -267,9 +229,9 @@ class AccelerationMonitor(UR3eMonitor):
         # Compute the acceleration for that joint
         largest_qdd = max_qd_diff / time_diff
 
-        self.monitor.get_variables().set("max_acceleration", max_acceleration)
+        self._monitor.get_variables().set("max_acceleration", max_acceleration)
 
-        output = self.monitor.update('qdd', largest_qdd, time_new)
+        output = self._monitor.update('qdd', largest_qdd, time_new)
 
         self.old_mockup_data = mockup_data.copy()
 
@@ -293,16 +255,8 @@ class StuckJointMonitor(UR3eMonitor):
         self.old_mockup_data = None
 
     @property
-    def name(self) -> str:
-        return "stuck_joint_" + str(self.joint_index)
-
-    @property
     def type(self) -> str:
         return getattr(MonitoringMsgTypes, f"STUCK_JOINT_{self.joint_index}")
-
-    @property
-    def monitor(self) -> mstlo.Monitor:
-        return self._monitor
 
     @property
     def formula(self) -> str:
@@ -348,7 +302,7 @@ class StuckJointMonitor(UR3eMonitor):
             "robot_mode": [(robot_mode, time_stamp)],
         }
 
-        output = self.monitor.update_batch(batch)
+        output = self._monitor.update_batch(batch)
         self.old_mockup_data = mockup_data.copy()
         return output.verdicts()
 
@@ -367,20 +321,10 @@ class MismatchMonitor(UR3eMonitor):
         self._monitor = self._initialize_monitor()
 
     @property
-    def name(self) -> str:
-        if self.diff_type == "tcp":
-            return "tcp_mismatch"
-        return "q_mismatch"
-
-    @property
     def type(self) -> str:
         if self.diff_type == "tcp":
             return MonitoringMsgTypes.TCP_MISSMATCH
         return MonitoringMsgTypes.Q_MISSMATCH
-
-    @property
-    def monitor(self) -> mstlo.Monitor:
-        return self._monitor
 
     @property
     def formula(self) -> str:
@@ -406,5 +350,5 @@ class MismatchMonitor(UR3eMonitor):
             error = sum((mockup_data[f"q_actual_{i}"] - sim_data[f"q_actual_{i}"])**2 for i in range(6))**0.5
             timestamp = max(mockup_data["time_stamp"], sim_data["time_stamp"])
 
-        output = self.monitor.update(signal="q_diff", value=abs(error), timestamp=timestamp)
+        output = self._monitor.update(signal="q_diff", value=abs(error), timestamp=timestamp)
         return output.verdicts()

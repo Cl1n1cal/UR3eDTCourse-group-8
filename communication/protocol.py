@@ -23,29 +23,28 @@ class MonitoringMsgKeys:
 
 class MonitoringMsgTypes:
     """Types of monitoring messages sent from the monitoring service."""
+    STUCK_JOINT_0 = "stuck_joint_0"
+    STUCK_JOINT_1 = "stuck_joint_1"
+    STUCK_JOINT_2 = "stuck_joint_2"
+    STUCK_JOINT_3 = "stuck_joint_3"
+    STUCK_JOINT_4 = "stuck_joint_4"
+    STUCK_JOINT_5 = "stuck_joint_5"
 
-    STUCK_JOINT_0 = "Joint 0 Stuck"
-    STUCK_JOINT_1 = "Joint 1 Stuck"
-    STUCK_JOINT_2 = "Joint 2 Stuck"
-    STUCK_JOINT_3 = "Joint 3 Stuck"
-    STUCK_JOINT_4 = "Joint 4 Stuck"
-    STUCK_JOINT_5 = "Joint 5 Stuck"
+    WEAR_JOINT_0 = "wear_joint_0"
+    WEAR_JOINT_1 = "wear_joint_1"
+    WEAR_JOINT_2 = "wear_joint_2"
+    WEAR_JOINT_3 = "wear_joint_3"
+    WEAR_JOINT_4 = "wear_joint_4"
+    WEAR_JOINT_5 = "wear_joint_5"
 
-    WEAR_JOINT_0 = "Joint 0 Wear"
-    WEAR_JOINT_1 = "Joint 1 Wear"
-    WEAR_JOINT_2 = "Joint 2 Wear"
-    WEAR_JOINT_3 = "Joint 3 Wear"
-    WEAR_JOINT_4 = "Joint 4 Wear"
-    WEAR_JOINT_5 = "Joint 5 Wear"
+    TCP_MISSMATCH = "tcp_mismatch"
+    Q_MISSMATCH = "q_mismatch"
 
-    TCP_MISSMATCH = "TCP Pose Missmatch"
-    Q_MISSMATCH = "Q Missmatch"
+    MAX_VELOCITY_EXCEEDED = "max_velocity_exceeded"
+    MAX_ACCELERATION_EXCEEDED = "max_acceleration_exceeded"
 
-    MAX_VELOCITY_EXCEEDED = "Max Velocity Exceeded"
-    MAX_ACCELERATION_EXCEEDED = "Max Acceleration Exceeded"
-
-    SIMULATION_OFFLINE = "Simulation Offline"
-    MOCKUP_OFFLINE = "Mockup Offline"
+    SIMULATION_OFFLINE = "simulation_offline"
+    MOCKUP_OFFLINE = "mockup_offline"
 
 
 class CtrlMsgFields:
