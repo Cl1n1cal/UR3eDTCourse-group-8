@@ -23,7 +23,7 @@ LOGGING_CONFIG = {
             'propagate': True
         },
         'calibration_service': {
-            'level': 'DEBUG',
+            'level': 'INFO',
             'handlers': [],
             'propagate': True
         },
@@ -39,6 +39,16 @@ LOGGING_CONFIG = {
         },
         'ur3e_mockup': {
             'level': 'INFO',
+            'handlers': [],
+            'propagate': True
+        },
+        'monitoring_service': {
+            'level': 'DEBUG',
+            'handlers': [],
+            'propagate': True
+        },
+        'alarm_manager_service': {
+            'level': 'DEBUG',
             'handlers': [],
             'propagate': True
         }

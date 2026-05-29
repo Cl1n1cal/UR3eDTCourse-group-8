@@ -53,8 +53,8 @@ class MockupStatePublisher:
         timestamp = datetime.fromtimestamp(msg_time, timezone.utc).isoformat()
         fields = {}
         fields[RobotArmStateKeys.ROBOT_MODE] = data[RobotArmStateKeys.ROBOT_MODE]
-        fields[RobotArmStateKeys.JOINT_MAX_SPEED] = data[RobotArmStateKeys.JOINT_MAX_SPEED]
-        fields[RobotArmStateKeys.JOINT_MAX_ACCELERATION] = data[RobotArmStateKeys.JOINT_MAX_ACCELERATION]
+        fields[RobotArmStateKeys.JOINT_MAX_SPEED] = float(data[RobotArmStateKeys.JOINT_MAX_SPEED])
+        fields[RobotArmStateKeys.JOINT_MAX_ACCELERATION] = float(data[RobotArmStateKeys.JOINT_MAX_ACCELERATION])
 
         fields.update(unroll_list(RobotArmStateKeys.Q_ACTUAL, data[RobotArmStateKeys.Q_ACTUAL]))
         fields.update(unroll_list(RobotArmStateKeys.QD_ACTUAL, data[RobotArmStateKeys.QD_ACTUAL]))

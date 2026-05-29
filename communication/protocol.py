@@ -9,8 +9,53 @@ ROUTING_KEY_PARTICLE = "robotarm.particle.state"
 ROUTING_KEY_CTRL = "robotarm.ctrl"
 ROUTING_KEY_RECORDER = "robotarm.recorder.#"
 ROUTING_KEY_CALIBRATION = "robotarm.model.calibration"
+ROUTING_KEY_MONITORING = "robotarm.monitoring"
+ROUTING_KEY_ELECTRICITY = "robotarm.model.electricity"
+ROUTING_KEY_JOINT_ROTATIONS = "robotarm.model.joint_rotations"
 
 ### MESSAGES
+class MonitoringMsgKeys:
+    """Keys used in monitoring messages sent from the monitoring service."""
+
+    TYPE = "type"
+    ROBUSTNESS_VALUE = "robustness_value"
+    ROBUSTNESS_UPPER_BOUND = "robustness_upper_bound"
+    ROBUSTNESS_LOWER_BOUND = "robustness_lower_bound"
+    TIMESTAMP = "timestamp"
+
+class MonitoringMsgTypes:
+    """Types of monitoring messages sent from the monitoring service."""
+
+    STUCK_JOINT_0 = "Joint 0 Stuck"
+    STUCK_JOINT_1 = "Joint 1 Stuck"
+    STUCK_JOINT_2 = "Joint 2 Stuck"
+    STUCK_JOINT_3 = "Joint 3 Stuck"
+    STUCK_JOINT_4 = "Joint 4 Stuck"
+    STUCK_JOINT_5 = "Joint 5 Stuck"
+
+    WEAR_JOINT_0 = "Joint 0 Wear"
+    WEAR_JOINT_1 = "Joint 1 Wear"
+    WEAR_JOINT_2 = "Joint 2 Wear"
+    WEAR_JOINT_3 = "Joint 3 Wear"
+    WEAR_JOINT_4 = "Joint 4 Wear"
+    WEAR_JOINT_5 = "Joint 5 Wear"
+
+    TCP_MISSMATCH = "TCP Pose Missmatch"
+    Q_MISSMATCH = "Q Missmatch"
+
+    MAX_VELOCITY_EXCEEDED = "Max Velocity Exceeded"
+    MAX_ACCELERATION_EXCEEDED = "Max Acceleration Exceeded"
+
+    SIMULATION_OFFLINE = "Simulation Offline"
+    MOCKUP_OFFLINE = "Mockup Offline"
+
+    JOINT_ROTATION_THRESHOLD_0 = "Joint 0 Rotation Threshold"
+    JOINT_ROTATION_THRESHOLD_1 = "Joint 1 Rotation Threshold"
+    JOINT_ROTATION_THRESHOLD_2 = "Joint 2 Rotation Threshold"
+    JOINT_ROTATION_THRESHOLD_3 = "Joint 3 Rotation Threshold"
+    JOINT_ROTATION_THRESHOLD_4 = "Joint 4 Rotation Threshold"
+    JOINT_ROTATION_THRESHOLD_5 = "Joint 5 Rotation Threshold"
+
 class CtrlMsgFields:
     """Types of control messages that can be sent to the robot arm."""
 
@@ -19,6 +64,7 @@ class CtrlMsgFields:
     PAUSE = "pause"
     STOP = "stop"
     INJECT_FAULT = "inject_fault"
+    UNSTUCK_JOINT = "unstuck_joint"
 
 
 class CtrlMsgKeys:

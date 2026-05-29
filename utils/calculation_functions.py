@@ -146,3 +146,6 @@ def se3_to_pos_rpy(se3: SE3):
     tcp_rpy = se3.rpy(order='xyz')
     tcp_xyz = se3.t
     return np.hstack((tcp_xyz, tcp_rpy))
+
+def milliseconds_to_seconds(milliseconds: float) -> float:
+    return milliseconds / 1000.0

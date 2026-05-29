@@ -5,7 +5,6 @@ This module starts the executable in '../ur3e_mockup/' folder named 'ur3e_mockup
 import subprocess
 import os
 import platform
-import logging
 from startup.utils.logging_config import create_service_logger
 
 logger = create_service_logger("start_ur3e_mockup")
