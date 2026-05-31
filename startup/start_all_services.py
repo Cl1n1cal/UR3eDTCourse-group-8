@@ -15,6 +15,7 @@ from startup.start_command_sender import start_command_sender
 from startup.start_alarm_manager_service import start_alarm_manager_service
 from startup.start_electricity_service import start_electricity_service
 from startup.start_joint_rotation_counter_service import start_joint_rotation_counter_service
+from startup.start_wear_prediction_service import start_wear_prediction_service
 
 def signal_handler(sig, frame):
     sys.exit(0)
@@ -33,6 +34,7 @@ if __name__ == "__main__":
     start_as_daemon(start_alarm_manager_service)
     start_as_daemon(start_electricity_service)
     start_as_daemon(start_command_sender)
+    start_as_daemon(start_wear_prediction_service)
     start_as_daemon(start_visualization_service)
     start_as_daemon(start_joint_rotation_counter_service)
     
