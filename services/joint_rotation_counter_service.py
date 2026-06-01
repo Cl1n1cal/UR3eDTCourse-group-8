@@ -11,18 +11,13 @@ from influxdb_client.client.influxdb_client import InfluxDBClient
 from influxdb_client.client.write_api import SYNCHRONOUS
 
 from communication.factory import RabbitMQFactory
-from communication.protocol import (
-    RobotArmStateKeys,
-    ROUTING_KEY_STATE,
-    ROUTING_KEY_JOINT_ROTATIONS,
-)
+from communication.protocol import RobotArmStateKeys, ROUTING_KEY_STATE, ROUTING_KEY_JOINT_ROTATIONS, ROUTING_KEY_RECORDER
 from startup.utils.logging_config import create_service_logger
 
 NUM_JOINTS = 6
 
 class JointRotationCounterService:
     def __init__(self):
-        self.write_api = None
         self.query_api = None
         self.influx_db_org = None
         self.influx_db_bucket = None
@@ -44,20 +39,16 @@ class JointRotationCounterService:
         self._l.info("JointRotationCounterService setup with config", config)
 
         client = InfluxDBClient(**config)
-        self.write_api = client.write_api(write_options=SYNCHRONOUS)
         self.query_api = client.query_api()
         self.influx_db_org = config["org"]
         self.influx_db_bucket = config["bucket"]
-
+        
         self.rotation_threshold = float(config.get("rotation_threshold", 0.0))
         self.publish_interval = float(config.get("publish_interval", 5.0))
 
         self.rabbitmq_publisher.connect_to_server()
         self.rabbitmq_consumer.connect_to_server()
-        self.rabbitmq_consumer.subscribe(
-            routing_key=ROUTING_KEY_STATE,
-            on_message_callback=self._on_state_message,
-        )
+        self.rabbitmq_consumer.subscribe(routing_key=ROUTING_KEY_STATE, on_message_callback=self._on_state_message)
 
         self._load_persisted_rotations()
 
@@ -65,7 +56,6 @@ class JointRotationCounterService:
         """Load rotation counts from InfluxDB, falling back to JSON file."""
         loaded_from = None
 
-        # ── 1. Try InfluxDB first ──
         try:
             query = f'''
             from(bucket: "{self.influx_db_bucket}")
@@ -174,9 +164,8 @@ class JointRotationCounterService:
                     f"| Total: {total_rotations:.2f} rev"
                 )
 
-                self.write_api.write(
-                    self.influx_db_bucket,
-                    self.influx_db_org,
+                self.rabbitmq_publisher.send_message(
+                    ROUTING_KEY_RECORDER,
                     {
                         "measurement": "joint_rotations",
                         "tags": {"source": "joint_rotation_counter_service"},
