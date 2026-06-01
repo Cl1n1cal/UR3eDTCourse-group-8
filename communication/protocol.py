@@ -33,12 +33,7 @@ class MonitoringMsgTypes:
     STUCK_JOINT_4 = "stuck_joint_4"
     STUCK_JOINT_5 = "stuck_joint_5"
 
-    WEAR_JOINT_0 = "wear_joint_0"
-    WEAR_JOINT_1 = "wear_joint_1"
-    WEAR_JOINT_2 = "wear_joint_2"
-    WEAR_JOINT_3 = "wear_joint_3"
-    WEAR_JOINT_4 = "wear_joint_4"
-    WEAR_JOINT_5 = "wear_joint_5"
+    WEAR_PREDICTION = "wear_prediction"
 
     TCP_MISSMATCH = "tcp_mismatch"
     Q_MISSMATCH = "q_mismatch"

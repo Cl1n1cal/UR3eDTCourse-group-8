@@ -59,6 +59,7 @@ class MonitoringService:
         self.stuck_joint_q_difference_threshold = monitoring_config["stuck_joint_q_difference_threshold"]
         self.stuck_joint_qd_threshold = monitoring_config["stuck_joint_qd_threshold"]
         self.max_q_error = monitoring_config["max_q_error"]
+        self.wear_threshold = float(monitoring_config.get("wear_threshold", 0.5))
         self.wait_time = monitoring_config["wait_time"]
         self.joint_rotation_threshold = float(monitoring_config.get("joint_rotation_threshold", 0.0))
 
@@ -68,12 +69,19 @@ class MonitoringService:
                         monitors.AccelerationMonitor(self.mockup_max_acceleration, window_seconds=self.monitor_window_seconds),
                         monitors.MismatchMonitor("q", self.max_q_error, window_seconds=self.monitor_window_seconds),
                         monitors.MismatchMonitor("tcp", self.max_q_error, window_seconds=self.monitor_window_seconds),
+                        monitors.WearPredictionMonitor(self.wear_threshold, window_seconds=self.monitor_window_seconds),
                         monitors.StuckJointMonitor(joint_index=0, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
                         monitors.StuckJointMonitor(joint_index=1, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
                         monitors.StuckJointMonitor(joint_index=2, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
                         monitors.StuckJointMonitor(joint_index=3, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
                         monitors.StuckJointMonitor(joint_index=4, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
-                        monitors.StuckJointMonitor(joint_index=5, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds)
+                        monitors.StuckJointMonitor(joint_index=5, qd_threshold=self.stuck_joint_qd_threshold, q_diff_threshold=self.stuck_joint_q_difference_threshold, window_seconds=self.monitor_window_seconds),
+                        monitors.JointRotationMonitor(joint_index=0, rotation_threshold=self.joint_rotation_threshold),
+                        monitors.JointRotationMonitor(joint_index=1, rotation_threshold=self.joint_rotation_threshold),
+                        monitors.JointRotationMonitor(joint_index=2, rotation_threshold=self.joint_rotation_threshold),
+                        monitors.JointRotationMonitor(joint_index=3, rotation_threshold=self.joint_rotation_threshold),
+                        monitors.JointRotationMonitor(joint_index=4, rotation_threshold=self.joint_rotation_threshold),
+                        monitors.JointRotationMonitor(joint_index=5, rotation_threshold=self.joint_rotation_threshold)
                         ]
         
         self._l.info("Monitoring service initialized with monitors:")
@@ -116,8 +124,10 @@ class MonitoringService:
 
             # Extract last record for latency checks
             time_stamp = time.time()
+            wear_data = results.get("wear_prediction")
             for monitor in self.monitors:
-                self.robustness_results[monitor.type] = monitor.compute_robustness(mockup_data, sim_data, time_stamp)
+                # pass wear_data as a fourth argument; monitors that don't use it will ignore it
+                self.robustness_results[monitor.type] = monitor.compute_robustness(mockup_data, sim_data, time_stamp, wear_data)
             
             for monitor, robustness in self.robustness_results.items():
                 self._l.debug(f"Monitor {monitor} robustness: {robustness}")
@@ -136,7 +146,7 @@ class MonitoringService:
         query = f'''
         from(bucket: "{self.influxdb_bucket}")
         |> range(start: -{self.wait_time}s, stop: -{self.sample_delay}ms)
-        |> filter(fn: (r) => r._measurement == "mockup_state" or r._measurement == "simulation_state")
+        |> filter(fn: (r) => r._measurement == "mockup_state" or r._measurement == "simulation_state" or r._measurement == "wear_prediction")
         |> filter(fn: (r) => contains(value: r._field, set: [
             "joint_max_acceleration","joint_max_speed",
             "q_actual_0","q_actual_1","q_actual_2","q_actual_3","q_actual_4","q_actual_5",
@@ -144,6 +154,7 @@ class MonitoringService:
             "q_target_0", "q_target_1", "q_target_2", "q_target_3", "q_target_4", "q_target_5",
             "tcp_pose_0","tcp_pose_1","tcp_pose_2","tcp_pose_3","tcp_pose_4","tcp_pose_5",
             "robot_mode",
+            "predicted_wear_level",
         ]))
         |> group(columns: ["_measurement", "_field"])
         |> last()
@@ -160,6 +171,7 @@ class MonitoringService:
         fields4 = ["joint_max_speed"]
         fields5 = ["joint_max_acceleration"]
         fields6 = [f"q_target_{i}" for i in range(6)]
+        fields7 = ["predicted_wear_level"]
 
         for table in tables:
             for record in table.records:
@@ -172,7 +184,8 @@ class MonitoringService:
                     **{field: record.values.get(field) for field in fields3},
                     **{field: record.values.get(field) for field in fields4},
                     **{field: record.values.get(field) for field in fields5},
-                    **{field: record.values.get(field) for field in fields6}
+                    **{field: record.values.get(field) for field in fields6},
+                    **{field: record.values.get(field) for field in fields7}
                 }
                 data[key] = entry
 

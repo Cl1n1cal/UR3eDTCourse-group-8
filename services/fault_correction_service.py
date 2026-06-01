@@ -2,7 +2,7 @@ from communication.factory import RabbitMQFactory
 from startup.utils.logging_config import create_service_logger
 from communication.protocol import (
     ROUTING_KEY_MONITORING, ROUTING_KEY_CTRL, MonitoringMsgTypes,
-    MonitoringMsgKeys, CtrlMsgFields, CtrlMsgKeys
+    MonitoringMsgKeys, CtrlMsgFields, CtrlMsgKeys, FaultTypes
 )
 import time
 from startup.utils.start_as_daemon import start_as_daemon
@@ -82,6 +82,11 @@ class FaultCorrectionService:
                         self.last_correction_time[monitor_type] = time.time()
                         start_as_daemon(start_sim_service)
 
+                case MonitoringMsgTypes.WEAR_PREDICTION:
+                    if robustness_value < 0.0:
+                        self._l.info("Wear prediction exceeded threshold: issuing reset command.")
+                        self.handle_wear_reset(monitor_type)
+
                 case _:
                     pass
 
@@ -94,6 +99,18 @@ class FaultCorrectionService:
             }
             self.rabbitmq.send_message(routing_key=ROUTING_KEY_CTRL, message=msg)
             self.last_correction_time[monitor_type] = time.time()
+
+    def handle_wear_reset(self, monitor_type: str, wear_level: float = 0.0, duration: float = 5.0):
+        """Send a wear command to reset wear to `wear_level` for `duration` seconds."""
+        msg = {
+            CtrlMsgKeys.TYPE: CtrlMsgFields.INJECT_FAULT,
+            CtrlMsgKeys.FAULT_TYPE: FaultTypes.WEAR,
+            CtrlMsgKeys.FAULT_VALUE: wear_level,
+            CtrlMsgKeys.DURATION: duration,
+            CtrlMsgKeys.JOINTS: list(range(6)),
+        }
+        self.rabbitmq.send_message(routing_key=ROUTING_KEY_CTRL, message=msg)
+        self.last_correction_time[monitor_type] = time.time()
 
     def start_serving(self):
         if self.rabbitmq == None:

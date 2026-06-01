@@ -4,6 +4,7 @@ import mstlo_python as mstlo
 from typing import List, Tuple, Union
 from communication.protocol import MonitoringMsgKeys, MonitoringMsgTypes, RobotArmStateKeys, RobotMode
 import numpy as np
+import time
 
 from utils.calculation_functions import milliseconds_to_seconds
 
@@ -394,6 +395,57 @@ class MismatchMonitor(UR3eMonitor):
 
         error = sum((mockup_data[k] - sim_data[k]) ** 2 for k in keys) ** 0.5
         output = self._monitor.update(signal="q_diff", value=abs(error), timestamp=timestamp)
+        return output.verdicts()
+
+
+class WearPredictionMonitor(UR3eMonitor):
+    """Monitor that checks the predicted wear level published by the wear prediction service.
+
+    The measurement written by the wear prediction service is `wear_prediction` and
+    contains the field `predicted_wear_level`. This monitor expects the monitoring
+    loop to pass that entry as an extra argument to `compute_robustness` (args[3]).
+    """
+    def __init__(self, max_wear: float, window_seconds: float = 0.0):
+        self.max_wear = max_wear
+        self.window_seconds = max(0.0, float(window_seconds))
+        self._monitor = self._initialize_monitor()
+
+    @property
+    def type(self) -> str:
+        return MonitoringMsgTypes.WEAR_PREDICTION
+
+    @property
+    def formula(self) -> str:
+        # Expects a signal named 'wear' to be updated with the predicted wear level
+        return f"G[0,{self.window_seconds}](wear < $max_wear)"
+
+    def _initialize_monitor(self) -> mstlo.Monitor:
+        vars = mstlo.Variables()
+        vars.set("max_wear", self.max_wear)
+        spec = mstlo.parse_formula(self.formula)
+        return mstlo.Monitor(formula=spec, semantics="DelayedQuantitative", variables=vars)
+
+    def compute_robustness(self, *args) -> List[Tuple[float, Union[bool, float, Tuple[float, float]]]] | None:
+        """Expects (mockup_data, sim_data, timestamp, wear_data).
+
+        If `wear_data` is not provided or contains no `predicted_wear_level`, returns None.
+        """
+        wear_data = None
+        if len(args) >= 4:
+            wear_data = args[3]
+
+        if wear_data is None:
+            return None
+
+        wear_val = wear_data.get("predicted_wear_level")
+        if wear_val is None:
+            return None
+
+        timestamp = wear_data.get("time_stamp", time.time())
+
+        # Update the variable and signal
+        self._monitor.get_variables().set("max_wear", self.max_wear)
+        output = self._monitor.update(signal="wear", value=float(wear_val), timestamp=timestamp)
         return output.verdicts()
 
 class JointRotationMonitor(UR3eMonitor):
