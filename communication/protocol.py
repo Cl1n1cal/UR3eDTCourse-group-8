@@ -12,6 +12,7 @@ ROUTING_KEY_CALIBRATION = "robotarm.model.calibration"
 ROUTING_KEY_MONITORING = "robotarm.monitoring"
 ROUTING_KEY_ELECTRICITY = "robotarm.model.electricity"
 ROUTING_KEY_JOINT_ROTATIONS = "robotarm.model.joint_rotations"
+ROUTING_KEY_WEAR = "robotarm.model.wear"
 
 ### MESSAGES
 class MonitoringMsgKeys:
