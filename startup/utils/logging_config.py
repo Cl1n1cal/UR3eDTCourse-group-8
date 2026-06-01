@@ -3,6 +3,9 @@ import logging.config
 import os
 from ..logging_dict import LOGGING_CONFIG, LOG_DIR_PATH
 
+# Ensure the log directory exists to avoid FileHandler crashes when writing logs
+os.makedirs(os.path.abspath(LOG_DIR_PATH), exist_ok=True)
+
 logging.config.dictConfig(LOGGING_CONFIG)
 
 #deprecated
