@@ -5,6 +5,7 @@ ENCODING = "ascii"
 ### ROUTING KEYS
 ROUTING_KEY_STATE = "robotarm.pt.state"
 ROUTING_KEY_MODEL_STATE = "robotarm.model.state"
+ROUTING_KEY_PARTICLE = "robotarm.particle.state"
 ROUTING_KEY_CTRL = "robotarm.ctrl"
 ROUTING_KEY_RECORDER = "robotarm.recorder.#"
 ROUTING_KEY_CALIBRATION = "robotarm.model.calibration"
@@ -98,6 +99,10 @@ class RobotArmStateKeys:
     JOINT_MAX_ACCELERATION = "joint_max_acceleration"
     TCP_POSE = "tcp_pose"
 
+class ParticleFilterMsgKeys:
+    Q_ACTUAL = "q_actual"
+    QD_ACTUAL = "qd_actual"
+    TIMESTAMP = "timestamp"
 
 class RobotMode:
     """Possible modes of the robot arm (ROBOT_MODE)."""

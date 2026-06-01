@@ -7,6 +7,10 @@ def compute_time(q_start: np.ndarray, q_end: np.ndarray, v_max: float, a_max: fl
     Velocity: rad/s
     Acceleration: rad/s^2
     """
+    
+    # Guard against invalid velocity or acceleration values
+    if v_max <= 0 or a_max <= 0:
+        raise ValueError(f"Invalid motion parameters: v_max={v_max}, a_max={a_max}. Both must be positive.")
 
     T_all = []
 
@@ -38,6 +42,10 @@ def compute_steps(q_start: np.ndarray, q_end: np.ndarray, v_max: float, a_max: f
     Velocity: rad/s
     Acceleration: rad/s^2
     """
+    
+    # Guard against invalid velocity or acceleration values
+    if v_max <= 0.0 or a_max <= 0.0:
+        raise ValueError(f"Invalid motion parameters: v_max={v_max}, a_max={a_max}. Both must be positive.")
 
     T_all = []
 
