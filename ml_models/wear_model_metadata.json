@@ -1,0 +1,50 @@
+{
+  "trained_at": "2026-05-31T21:27:49.463571",
+  "dataset": "G:\\Skole\\8. semester\\Engineering Digital Twins\\UR3eDTCourse-group-8\\data_collection\\wear_dataset.csv",
+  "n_samples": 2199,
+  "n_features": 14,
+  "feature_names": [
+    "mean_dx",
+    "mean_dy",
+    "mean_dz",
+    "max_dx",
+    "max_dy",
+    "max_dz",
+    "mean_drx",
+    "mean_dry",
+    "mean_drz",
+    "max_drx",
+    "max_dry",
+    "max_drz",
+    "mean_pos_error_m",
+    "max_pos_error_m"
+  ],
+  "split": "80/20 train/test",
+  "random_state": 42,
+  "best_model": "Random Forest",
+  "r2_train": 0.9318,
+  "r2_test": 0.8887,
+  "mae_test": 0.076,
+  "all_models": {
+    "Random Forest": {
+      "r2_train": 0.9318,
+      "r2_test": 0.8887,
+      "mae_test": 0.076
+    },
+    "DNN (MLP)": {
+      "r2_train": 0.9184,
+      "r2_test": 0.8786,
+      "mae_test": 0.0837
+    },
+    "Linear Regression": {
+      "r2_train": 0.8546,
+      "r2_test": 0.8474,
+      "mae_test": 0.0911
+    },
+    "XGBoost": {
+      "r2_train": 0.9585,
+      "r2_test": 0.8871,
+      "mae_test": 0.0765
+    }
+  }
+}
