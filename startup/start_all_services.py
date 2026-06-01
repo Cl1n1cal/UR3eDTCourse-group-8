@@ -13,8 +13,8 @@ from startup.start_calibration_service import start_calibration_service
 from startup.start_particle_filter_service import start_particle_filter_service
 from startup.utils.logging_config import setup_root_logging
 from startup.start_visualization_service import start_visualization_service
+from startup.start_fault_correction_service import start_fault_correction_service
 from startup.start_dashboard import start_dashboard
-from startup.start_alarm_manager_service import start_alarm_manager_service
 from startup.start_electricity_service import start_electricity_service
 from startup.start_joint_rotation_counter_service import start_joint_rotation_counter_service
 from startup.start_wear_prediction_service import start_wear_prediction_service
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     _processes.append(start_as_daemon(start_calibration_service))
     _processes.append(start_as_daemon(start_particle_filter_service))
     _processes.append(start_as_daemon(start_monitoring_service))
-    _processes.append(start_as_daemon(start_alarm_manager_service))
+    _processes.append(start_as_daemon(start_fault_correction_service))
     _processes.append(start_as_daemon(start_electricity_service))
     _processes.append(start_as_daemon(start_joint_rotation_counter_service))
     _processes.append(start_as_daemon(start_wear_prediction_service))
