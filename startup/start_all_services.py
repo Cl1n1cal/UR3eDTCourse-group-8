@@ -38,9 +38,6 @@ def _shutdown(sig=None, frame=None):
     sys.exit(0)
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT,  _shutdown)
-    signal.signal(signal.SIGTERM, _shutdown)
-
     setup_root_logging("all_service_logs")
     start_docker_rabbitmq()
     start_docker_influxdb()
