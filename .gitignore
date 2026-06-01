@@ -212,3 +212,6 @@ influxdbserver/influxdb/engine/data
 influxdbserver/
 # # InfluxDB
 */InfluxDB/engine/
+
+# Fallback joint lifecycle data
+joint_lifecycle.json

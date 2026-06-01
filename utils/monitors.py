@@ -103,7 +103,7 @@ class LatencyMonitor(UR3eMonitor):
             formula=spec, semantics="DelayedQuantitative", variables=vars
         )
 
-    def compute_robustness(self, *args) -> List[Tuple[float, Union[bool, float, Tuple[float, float]]]]:
+    def compute_robustness(self, *args) -> List[Tuple[float, Union[bool, float, Tuple[float, float]]]] | None:
         """Compute robustness for a latency sample.
 
         Expects `(sample_data, nan, time_stamp)` where `sample_data` contains a
@@ -111,10 +111,23 @@ class LatencyMonitor(UR3eMonitor):
         `mstlo` verdicts.
         """
         time_stamp = args[2]
-        sample_data = args[0]
+
+        if self.s_type == "mockup":
+            sample_data = args[0]
+        elif self.s_type == "simulation":
+            sample_data = args[1]
+        else:
+            return None
+
+        if sample_data is None:
+            return None
+
+        sample_time = sample_data.get("time_stamp")
+        if sample_time is None:
+            return None
+
         # Calculate the difference in time stamps for the mockup and the monitor service
         adj_time = time_stamp - (milliseconds_to_seconds(self.sample_delay))
-        sample_time = sample_data["time_stamp"]
         time_diff = np.absolute(sample_time - adj_time)
 
         output = self.monitor.update(
@@ -133,6 +146,7 @@ class VelocityMonitor(UR3eMonitor):
     def __init__(self, max_velocity):
         self.max_velocity = max_velocity
         self._monitor = self._initialize_monitor()
+        self._last_timestamp = -1.0 
 
     @property
     def name(self) -> str:
@@ -158,21 +172,34 @@ class VelocityMonitor(UR3eMonitor):
             formula=spec, semantics="DelayedQuantitative", variables=vars
         )
 
-    def compute_robustness(self, *args) -> List[Tuple[float, Union[bool, float, Tuple[float, float]]]]:
+    def compute_robustness(self, *args) -> List[Tuple[float, Union[bool, float, Tuple[float, float]]]] | None:
         """Compute robustness using the provided `mockup_data`.
 
         Expects `mockup_data` with keys `qd_actual_<i>` and
         `joint_max_speed`. Uses the largest `qd_actual` as the `qd` signal.
         """
         mockup_data = args[0]
-        # Get the max velocity and the time from the mockup_data
-        max_velocity = mockup_data[RobotArmStateKeys.JOINT_MAX_SPEED]
-        time = mockup_data["time_stamp"]
+
+        if mockup_data is None:
+            return None
+
+        max_velocity = mockup_data.get(RobotArmStateKeys.JOINT_MAX_SPEED)
+        time = mockup_data.get("time_stamp")
+
+        if max_velocity is None or time is None:
+            return None
+
+        if time <= self._last_timestamp:
+            return None
+        self._last_timestamp = time
 
         # Get the current velocity of each joint
         qd_list = []
         for i in range(6):
-            qd_list.append(mockup_data[f"qd_actual_{i}"])
+            val = mockup_data.get(f"qd_actual_{i}")
+            if val is None: 
+                return None
+            qd_list.append(val)
         
         # Find the joint with the largest velocity
         largest_qd = max(qd_list)
@@ -239,6 +266,11 @@ class AccelerationMonitor(UR3eMonitor):
         # Get the max velocity and the time from the newest mockup_data
         max_acceleration = mockup_data[RobotArmStateKeys.JOINT_MAX_ACCELERATION]
         time_new = mockup_data["time_stamp"]
+
+        if max_acceleration is None:
+            self.old_mockup_data = mockup_data.copy()
+            return None
+
         # Get the time from the old mockup_data
         time_old = self.old_mockup_data["time_stamp"] 
 
@@ -246,7 +278,12 @@ class AccelerationMonitor(UR3eMonitor):
         # Create a list of the difference in velocities
         qd_diff_list = []
         for i in range(6):
-            qd_diff_list.append(np.abs(mockup_data[f"qd_actual_{i}"] - self.old_mockup_data[f"qd_actual_{i}"]))
+            v_new = mockup_data[f"qd_actual_{i}"]
+            v_old = self.old_mockup_data[f"qd_actual_{i}"]
+            if v_new is None or v_old is None:
+                self.old_mockup_data = mockup_data.copy()
+                return None
+            qd_diff_list.append(np.abs(v_new - v_old))
 
         # Find the joint with the largest velocity difference (will have largest acceleration)
         max_qd_diff = max(qd_diff_list)
@@ -325,9 +362,17 @@ class StuckJointMonitor(UR3eMonitor):
         if mockup_data is None:
             return None
 
+        qd_actual = mockup_data.get(f"qd_actual_{self.joint_index}")
+        q_target = mockup_data.get(f"q_target_{self.joint_index}")
+        q_actual = mockup_data.get(f"q_actual_{self.joint_index}")
+
+        if qd_actual is None or q_target is None or q_actual is None:
+            return None
+
         time_stamp = mockup_data["time_stamp"]
-        qd = abs(mockup_data[f"qd_actual_{self.joint_index}"])
-        q_diff = abs(mockup_data[f"q_target_{self.joint_index}"] - mockup_data[f"q_actual_{self.joint_index}"])
+
+        qd = abs(qd_actual)
+        q_diff = abs(q_target - q_actual)
 
         batch = {
             "qd": [(qd, time_stamp)],
@@ -384,12 +429,17 @@ class MismatchMonitor(UR3eMonitor):
             return None
 
         if self.diff_type == "tcp":
-            error = sum((mockup_data[f"tcp_pose_{i}"] - sim_data[f"tcp_pose_{i}"])**2 for i in range(6))**0.5
+            keys = [f"tcp_pose_{i}" for i in range(6)]
             timestamp = mockup_data["time_stamp"]
         else:
-            error = sum((mockup_data[f"q_actual_{i}"] - sim_data[f"q_actual_{i}"])**2 for i in range(6))**0.5
+            keys = [f"q_actual_{i}" for i in range(6)]
             timestamp = max(mockup_data["time_stamp"], sim_data["time_stamp"])
 
+        for k in keys:
+            if mockup_data.get(k) is None or sim_data.get(k) is None:
+                return None
+
+        error = sum((mockup_data[k] - sim_data[k]) ** 2 for k in keys) ** 0.5
         output = self.monitor.update(signal="q_diff", value=abs(error), timestamp=timestamp)
         return output.verdicts()
 

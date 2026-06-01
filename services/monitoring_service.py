@@ -109,6 +109,13 @@ class MonitoringService:
             self._l.debug(f"mockup_data: {mockup_data}")
             self._l.debug(f"sim_data: {sim_data}")
 
+            if mockup_data is None or sim_data is None:
+                self._l.debug("Waiting for both mockup and simulation data to become available...")
+                continue
+
+            if self.old_mockup_data is not None and mockup_data.get("time_stamp") == self.old_mockup_data.get("time_stamp"):
+                continue
+
             # Extract last record for latency checks
             time_stamp = time.time()
             for monitor in self.monitors:
@@ -117,8 +124,8 @@ class MonitoringService:
             for monitor, robustness in self.robustness_results.items():
                 self._l.debug(f"Monitor {monitor} robustness: {robustness}")
 
-            # Set this after doing the computaions
-            # Used in the acceleration calculation where we need the diffence in velocity and time
+            # Set this after doing the computations
+            # Used in the acceleration calculation where we need the difference in velocity and time
             self.old_mockup_data = mockup_data
 
             rdata = self.create_monitoring_recorder_msg()
@@ -182,7 +189,7 @@ class MonitoringService:
             robustness = self.robustness_results[monitor.name]
             verdict = monitors.UR3eMonitor.latest(robustness)
             if verdict is None:
-                self._l.warning(f"No robustness value found for monitor {monitor.name}. Skipping message creation for this monitor.")
+                self._l.debug(f"No robustness value found for monitor {monitor.name}. Skipping message creation for this monitor.")
                 continue
             msg.append({MonitoringMsgKeys.TYPE: monitor.type, MonitoringMsgKeys.ROBUSTNESS_VALUE: verdict})
         
@@ -196,7 +203,7 @@ class MonitoringService:
             robustness = self.robustness_results[monitor.name]
             verdict = monitors.UR3eMonitor.latest(robustness)
             if verdict is None:
-                self._l.warning(f"No robustness value found for monitor {monitor.name}. Skipping recording for this monitor.")
+                self._l.debug(f"No robustness value found for monitor {monitor.name}. Skipping recording for this monitor.")
                 continue
             fields[monitor.name] = verdict
 
