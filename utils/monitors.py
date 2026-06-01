@@ -1,4 +1,5 @@
 from abc import abstractmethod
+import math
 import mstlo_python as mstlo
 from typing import List, Tuple, Union
 from communication.protocol import MonitoringMsgKeys, MonitoringMsgTypes, RobotArmStateKeys, RobotMode
@@ -80,7 +81,7 @@ class LatencyMonitor(UR3eMonitor):
             formula=spec, semantics="DelayedQuantitative", variables=vars
         )
 
-    def compute_robustness(self, *args) -> List[Tuple[float, Union[bool, float, Tuple[float, float]]]]:
+    def compute_robustness(self, *args) -> List[Tuple[float, Union[bool, float, Tuple[float, float]]]] | None:
         """Compute robustness for a latency sample.
 
         Expects `(sample_data, nan, time_stamp)` where `sample_data` contains a
@@ -88,10 +89,23 @@ class LatencyMonitor(UR3eMonitor):
         `mstlo` verdicts.
         """
         time_stamp = args[2]
-        sample_data = args[0]
+
+        if self.s_type == "mockup":
+            sample_data = args[0]
+        elif self.s_type == "simulation":
+            sample_data = args[1]
+        else:
+            return None
+
+        if sample_data is None:
+            return None
+
+        sample_time = sample_data.get("time_stamp")
+        if sample_time is None:
+            return None
+
         # Calculate the difference in time stamps for the mockup and the monitor service
         adj_time = time_stamp - (milliseconds_to_seconds(self.sample_delay))
-        sample_time = sample_data["time_stamp"]
         time_diff = np.absolute(sample_time - adj_time)
 
         output = self._monitor.update(
@@ -111,6 +125,7 @@ class VelocityMonitor(UR3eMonitor):
         self.max_velocity = max_velocity
         self.window_seconds = max(0.0, float(window_seconds))
         self._monitor = self._initialize_monitor()
+        self._last_timestamp = -1.0 
 
     @property
     def type(self) -> str:
@@ -128,21 +143,34 @@ class VelocityMonitor(UR3eMonitor):
             formula=spec, semantics="DelayedQuantitative", variables=vars
         )
 
-    def compute_robustness(self, *args) -> List[Tuple[float, Union[bool, float, Tuple[float, float]]]]:
+    def compute_robustness(self, *args) -> List[Tuple[float, Union[bool, float, Tuple[float, float]]]] | None:
         """Compute robustness using the provided `mockup_data`.
 
         Expects `mockup_data` with keys `qd_actual_<i>` and
         `joint_max_speed`. Uses the largest `qd_actual` as the `qd` signal.
         """
         mockup_data = args[0]
-        # Get the max velocity and the time from the mockup_data
-        max_velocity = mockup_data[RobotArmStateKeys.JOINT_MAX_SPEED]
-        time = mockup_data["time_stamp"]
+
+        if mockup_data is None:
+            return None
+
+        max_velocity = mockup_data.get(RobotArmStateKeys.JOINT_MAX_SPEED)
+        time = mockup_data.get("time_stamp")
+
+        if max_velocity is None or time is None:
+            return None
+
+        if time <= self._last_timestamp:
+            return None
+        self._last_timestamp = time
 
         # Get the current velocity of each joint
         qd_list = []
         for i in range(6):
-            qd_list.append(mockup_data[f"qd_actual_{i}"])
+            val = mockup_data.get(f"qd_actual_{i}")
+            if val is None: 
+                return None
+            qd_list.append(val)
         
         # Find the joint with the largest velocity
         largest_qd = max(qd_list)
@@ -202,6 +230,11 @@ class AccelerationMonitor(UR3eMonitor):
         # Get the max velocity and the time from the newest mockup_data
         max_acceleration = mockup_data[RobotArmStateKeys.JOINT_MAX_ACCELERATION]
         time_new = mockup_data["time_stamp"]
+
+        if max_acceleration is None:
+            self.old_mockup_data = mockup_data.copy()
+            return None
+
         # Get the time from the old mockup_data
         time_old = self.old_mockup_data["time_stamp"] 
 
@@ -209,7 +242,12 @@ class AccelerationMonitor(UR3eMonitor):
         # Create a list of the difference in velocities
         qd_diff_list = []
         for i in range(6):
-            qd_diff_list.append(np.abs(mockup_data[f"qd_actual_{i}"] - self.old_mockup_data[f"qd_actual_{i}"]))
+            v_new = mockup_data[f"qd_actual_{i}"]
+            v_old = self.old_mockup_data[f"qd_actual_{i}"]
+            if v_new is None or v_old is None:
+                self.old_mockup_data = mockup_data.copy()
+                return None
+            qd_diff_list.append(np.abs(v_new - v_old))
 
         # Find the joint with the largest velocity difference (will have largest acceleration)
         max_qd_diff = max(qd_diff_list)
@@ -344,11 +382,78 @@ class MismatchMonitor(UR3eMonitor):
             return None
 
         if self.diff_type == "tcp":
-            error = sum((mockup_data[f"tcp_pose_{i}"] - sim_data[f"tcp_pose_{i}"])**2 for i in range(6))**0.5
+            keys = [f"tcp_pose_{i}" for i in range(6)]
             timestamp = mockup_data["time_stamp"]
         else:
-            error = sum((mockup_data[f"q_actual_{i}"] - sim_data[f"q_actual_{i}"])**2 for i in range(6))**0.5
+            keys = [f"q_actual_{i}" for i in range(6)]
             timestamp = max(mockup_data["time_stamp"], sim_data["time_stamp"])
 
+        for k in keys:
+            if mockup_data.get(k) is None or sim_data.get(k) is None:
+                return None
+
+        error = sum((mockup_data[k] - sim_data[k]) ** 2 for k in keys) ** 0.5
         output = self._monitor.update(signal="q_diff", value=abs(error), timestamp=timestamp)
+        return output.verdicts()
+
+class JointRotationMonitor(UR3eMonitor):
+    def __init__(self, joint_index: int, rotation_threshold: float = 0.0):
+        self.joint_index = int(joint_index)
+        self.rotation_threshold = float(rotation_threshold)
+        self._accumulated_rotations: float = 0.0
+        self._prev_q: float | None = None
+        self._monitor = self._initialize_monitor()
+
+    @property
+    def name(self) -> str:
+        return f"joint_{self.joint_index}_rotations"
+
+    @property
+    def type(self) -> str:
+        return getattr(MonitoringMsgTypes, f"JOINT_ROTATION_THRESHOLD_{self.joint_index}")
+
+    @property
+    def monitor(self) -> mstlo.Monitor:
+        return self._monitor
+
+    @property
+    def formula(self) -> str:
+        return "(rotations < $threshold)"
+
+    def _initialize_monitor(self) -> mstlo.Monitor:
+        variables = mstlo.Variables()
+        variables.set("threshold", self.rotation_threshold if self.rotation_threshold > 0 else 1e9)
+        spec = mstlo.parse_formula(self.formula)
+        return mstlo.Monitor(formula=spec, semantics="DelayedQuantitative", variables=variables)
+
+    def set_accumulated_rotations(self, rotations: float) -> None:
+        """Inject a previously persisted rotation count (e.g. loaded from DB on startup)."""
+        self._accumulated_rotations = float(rotations)
+
+    def get_accumulated_rotations(self) -> float:
+        return self._accumulated_rotations
+
+    def compute_robustness(self, *args) -> List[Tuple[float, Union[bool, float, Tuple[float, float]]]] | None:
+        mockup_data = args[0]
+        time_stamp = args[2] if len(args) > 2 else None
+
+        if mockup_data is None:
+            return None
+
+        q_current = mockup_data.get(f"q_actual_{self.joint_index}")
+        if q_current is None:
+            return None
+
+        ts = time_stamp if time_stamp is not None else mockup_data.get("time_stamp", 0.0)
+
+        if self._prev_q is not None:
+            delta_rad = abs(q_current - self._prev_q)
+            self._accumulated_rotations += delta_rad / (2.0 * math.pi)
+
+        self._prev_q = q_current
+
+        if self.rotation_threshold > 0:
+            self._monitor.get_variables().set("threshold", self.rotation_threshold)
+
+        output = self._monitor.update("rotations", self._accumulated_rotations, ts)
         return output.verdicts()

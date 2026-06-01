@@ -10,6 +10,7 @@ def start_as_daemon(component_starter_function, kwargs=None) -> Process:
     pname = component_starter_function.__name__
     kwargs["ok_queue"] = ok_queue
     p = Process(target=component_starter_function, kwargs=kwargs, name=pname)
+    p.daemon = True
     p.start()
     print(f"{pname}... ", end="")
     print(ok_queue.get())

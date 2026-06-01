@@ -26,7 +26,9 @@ class Rabbitmq:
             self.parameters = pika.ConnectionParameters(ip,
                                                         port,
                                                         vhost,
-                                                        credentials)
+                                                        credentials,
+                                                        heartbeat=600,
+                                                        blocked_connection_timeout=300)
         else:
             ssl_context = ssl_package.SSLContext(getattr(ssl_package, ssl["protocol"]))
             ssl_context.set_ciphers(ssl["ciphers"])

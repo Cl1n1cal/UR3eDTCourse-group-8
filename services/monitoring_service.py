@@ -38,6 +38,7 @@ class MonitoringService:
         self.min_q_error = 0.0 # conf file
         self.wait_time = 0.0 # conf file
         self.old_mockup_data = None
+        self.joint_rotation_threshold = 0.0 # conf file
       
     def setup(self, monitoring_config):
         self._l.info("Monitoring setup with config ", monitoring_config)
@@ -59,6 +60,7 @@ class MonitoringService:
         self.stuck_joint_qd_threshold = monitoring_config["stuck_joint_qd_threshold"]
         self.max_q_error = monitoring_config["max_q_error"]
         self.wait_time = monitoring_config["wait_time"]
+        self.joint_rotation_threshold = float(monitoring_config.get("joint_rotation_threshold", 0.0))
 
         self.monitors = [monitors.LatencyMonitor(self.sim_max_latency, self.sample_delay, "simulation"),
                         monitors.LatencyMonitor(self.mockup_max_latency, self.sample_delay, "mockup"),
@@ -105,6 +107,13 @@ class MonitoringService:
             self._l.debug(f"mockup_data: {mockup_data}")
             self._l.debug(f"sim_data: {sim_data}")
 
+            if mockup_data is None or sim_data is None:
+                self._l.debug("Waiting for both mockup and simulation data to become available...")
+                continue
+
+            if self.old_mockup_data is not None and mockup_data.get("time_stamp") == self.old_mockup_data.get("time_stamp"):
+                continue
+
             # Extract last record for latency checks
             time_stamp = time.time()
             for monitor in self.monitors:
@@ -113,8 +122,8 @@ class MonitoringService:
             for monitor, robustness in self.robustness_results.items():
                 self._l.debug(f"Monitor {monitor} robustness: {robustness}")
 
-            # Set this after doing the computaions
-            # Used in the acceleration calculation where we need the diffence in velocity and time
+            # Set this after doing the computations
+            # Used in the acceleration calculation where we need the difference in velocity and time
             self.old_mockup_data = mockup_data
 
             rdata = self.create_monitoring_recorder_msg()

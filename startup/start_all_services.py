@@ -1,5 +1,6 @@
 import signal
 import sys
+import time
 from startup.start_monitoring_service import start_monitoring_service
 from startup.utils.start_as_daemon import start_as_daemon
 from startup.start_docker_rabbitmq import start_docker_rabbitmq
@@ -9,34 +10,57 @@ from startup.start_db_recorder_service import start_db_recorder_service
 from startup.start_mockup_state_publisher import start_mockup_state_publisher
 from startup.start_docker_influxdb import start_docker_influxdb
 from startup.start_calibration_service import start_calibration_service
+from startup.start_particle_filter_service import start_particle_filter_service
 from startup.utils.logging_config import setup_root_logging
 from startup.start_visualization_service import start_visualization_service
-from startup.start_command_sender import start_command_sender
 from startup.start_fault_correction_service import start_fault_correction_service
+from startup.start_dashboard import start_dashboard
 from startup.start_electricity_service import start_electricity_service
+from startup.start_joint_rotation_counter_service import start_joint_rotation_counter_service
+from startup.start_wear_prediction_service import start_wear_prediction_service
 
-def signal_handler(sig, frame):
+_processes = []
+
+def _shutdown(sig=None, frame=None):
+    print("\nShutting down all services…")
+    for p in _processes:
+        try:
+            p.terminate()
+        except Exception:
+            pass
+    deadline = time.time() + 3.0
+    for p in _processes:
+        remaining = max(0.0, deadline - time.time())
+        p.join(timeout=remaining)
+        if p.is_alive():
+            p.kill()
+    print("All services stopped.")
     sys.exit(0)
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, signal_handler)  # Handle ^C
+    signal.signal(signal.SIGINT,  _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
+
     setup_root_logging("all_service_logs")
     start_docker_rabbitmq()
     start_docker_influxdb()
-    start_as_daemon(start_db_recorder_service)
-    start_as_daemon(start_mockup_state_publisher)
-    start_as_daemon(start_robot_arm_mockup)
-    start_as_daemon(start_sim_service)
-    start_as_daemon(start_calibration_service)
-    start_as_daemon(start_monitoring_service)
-    start_as_daemon(start_fault_correction_service)
-    start_as_daemon(start_electricity_service)
-    start_as_daemon(start_command_sender)
-    start_as_daemon(start_visualization_service)
-    
-    # Keep the main process alive to handle signals
+
+    _processes.append(start_as_daemon(start_db_recorder_service))
+    _processes.append(start_as_daemon(start_mockup_state_publisher))
+    _processes.append(start_as_daemon(start_robot_arm_mockup))
+    _processes.append(start_as_daemon(start_sim_service))
+    _processes.append(start_as_daemon(start_calibration_service))
+    _processes.append(start_as_daemon(start_particle_filter_service))
+    _processes.append(start_as_daemon(start_monitoring_service))
+    _processes.append(start_as_daemon(start_fault_correction_service))
+    _processes.append(start_as_daemon(start_electricity_service))
+    _processes.append(start_as_daemon(start_joint_rotation_counter_service))
+    _processes.append(start_as_daemon(start_wear_prediction_service))
+    _processes.append(start_as_daemon(start_dashboard))
+    _processes.append(start_as_daemon(start_visualization_service))
+
     try:
         while True:
-            signal.pause()  # Wait for signals
+            time.sleep(1)
     except KeyboardInterrupt:
-        signal_handler(None, None)  # Fallback if signal.pause fails
+        _shutdown()

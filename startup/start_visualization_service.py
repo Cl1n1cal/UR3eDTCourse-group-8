@@ -16,30 +16,28 @@ def _get_executable_path(system, machine):
     Raises:
         OSError: If the OS is not supported or executable not found
     """
+    if machine.upper() in ["AMD64", "X86_64"]:
+        machine = "x86_64"
+    
     if machine != "x86_64":
         raise OSError(f"Unsupported machine architecture: {machine}. Supported architectures: x86_64")
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    vis_dir = os.path.join(current_dir, "../ur3e_dt_visualization")
-    executable_path = None
+    vis_dir = os.path.join(current_dir, "..", "ur3e_dt_visualization")
     if system == "Windows":
-        # Windows
         executable_name = "UR3e.exe"
-        print(f"exec_name: {executable_name}")
-        vis_dir = os.path.join(vis_dir, "exports/windows")
+        vis_dir = os.path.join(vis_dir, "exports", "windows")
         executable_path = os.path.join(vis_dir, executable_name)
     elif system == "Linux":
-        # Linux
         executable_name = "UR3e.x86_64"
-        print(f"exec_name: {executable_name}")
-        vis_dir = os.path.join(vis_dir, "exports/linux")
+        vis_dir = os.path.join(vis_dir, "exports", "linux")
         executable_path = os.path.join(vis_dir, executable_name)
     else:
-        # Other systems
         raise OSError(
             f"Unsupported operating system: {system}. "
             f"Supported systems: Windows, Linux"
         )
+    executable_path = os.path.abspath(os.path.normpath(executable_path))
 
     if not os.path.exists(executable_path):
         raise FileNotFoundError(f"Executable not found for {system}: {executable_path}")

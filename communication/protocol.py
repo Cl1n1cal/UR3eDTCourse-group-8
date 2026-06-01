@@ -5,11 +5,14 @@ ENCODING = "ascii"
 ### ROUTING KEYS
 ROUTING_KEY_STATE = "robotarm.pt.state"
 ROUTING_KEY_MODEL_STATE = "robotarm.model.state"
+ROUTING_KEY_PARTICLE = "robotarm.particle.state"
 ROUTING_KEY_CTRL = "robotarm.ctrl"
 ROUTING_KEY_RECORDER = "robotarm.recorder.#"
 ROUTING_KEY_CALIBRATION = "robotarm.model.calibration"
 ROUTING_KEY_MONITORING = "robotarm.monitoring"
 ROUTING_KEY_ELECTRICITY = "robotarm.model.electricity"
+ROUTING_KEY_JOINT_ROTATIONS = "robotarm.model.joint_rotations"
+ROUTING_KEY_WEAR = "robotarm.model.wear"
 
 ### MESSAGES
 class MonitoringMsgKeys:
@@ -46,6 +49,12 @@ class MonitoringMsgTypes:
     SIMULATION_OFFLINE = "simulation_offline"
     MOCKUP_OFFLINE = "mockup_offline"
 
+    JOINT_ROTATION_THRESHOLD_0 = "Joint 0 Rotation Threshold"
+    JOINT_ROTATION_THRESHOLD_1 = "Joint 1 Rotation Threshold"
+    JOINT_ROTATION_THRESHOLD_2 = "Joint 2 Rotation Threshold"
+    JOINT_ROTATION_THRESHOLD_3 = "Joint 3 Rotation Threshold"
+    JOINT_ROTATION_THRESHOLD_4 = "Joint 4 Rotation Threshold"
+    JOINT_ROTATION_THRESHOLD_5 = "Joint 5 Rotation Threshold"
 
 class CtrlMsgFields:
     """Types of control messages that can be sent to the robot arm."""
@@ -90,6 +99,10 @@ class RobotArmStateKeys:
     JOINT_MAX_ACCELERATION = "joint_max_acceleration"
     TCP_POSE = "tcp_pose"
 
+class ParticleFilterMsgKeys:
+    Q_ACTUAL = "q_actual"
+    QD_ACTUAL = "qd_actual"
+    TIMESTAMP = "timestamp"
 
 class RobotMode:
     """Possible modes of the robot arm (ROBOT_MODE)."""
