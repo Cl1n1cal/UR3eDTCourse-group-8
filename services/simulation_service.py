@@ -8,7 +8,7 @@ from utils.calculation_functions import se3_to_pos_rpy
 from models.robot_model import RobotModel
 from communication.rabbitmq import Rabbitmq
 from communication.factory import RabbitMQFactory, ROUTING_KEY_MODEL_STATE, ROUTING_KEY_CTRL, RobotArmStateKeys, CtrlMsgFields, CtrlMsgKeys, ROUTING_KEY_CALIBRATION
-from communication.protocol import unroll_list
+from communication.protocol import unroll_list, ROUTING_KEY_RECORDER
 from startup.utils.logging_config import create_service_logger
 
 class SimulationService:
@@ -32,7 +32,7 @@ class SimulationService:
         rdata = self.create_recorder_state_msg()
         mdata = self.create_state_msg()
 
-        self.publisher.send_message("robotarm.recorder.arm_state", rdata)
+        self.publisher.send_message(ROUTING_KEY_RECORDER, rdata)
         self.publisher.send_message(ROUTING_KEY_MODEL_STATE, mdata)
         
         
