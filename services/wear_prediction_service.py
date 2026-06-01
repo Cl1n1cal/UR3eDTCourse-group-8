@@ -7,11 +7,8 @@ import numpy as np
 from collections import deque
 from datetime import datetime, timezone
 
-from influxdb_client.client.influxdb_client import InfluxDBClient
-from influxdb_client.client.write_api import SYNCHRONOUS
-
 from communication.factory import RabbitMQFactory
-from communication.protocol import RobotArmStateKeys, RobotMode, ROUTING_KEY_STATE, ROUTING_KEY_WEAR
+from communication.protocol import RobotArmStateKeys, RobotMode, ROUTING_KEY_STATE, ROUTING_KEY_WEAR, ROUTING_KEY_RECORDER
 from models.robot_model import create_robot
 from utils.calculation_functions import se3_to_pos_rpy
 from startup.utils.logging_config import create_service_logger
@@ -47,10 +44,6 @@ class WearPredictionService:
         self.rabbitmq_consumer = RabbitMQFactory.create_rabbitmq()
         self.rabbitmq_publisher = RabbitMQFactory.create_rabbitmq()
 
-        self.write_api = None
-        self.influx_db_org = None
-        self.influx_db_bucket = None
-
         self.robot = None
 
         self.window_size: int = 40
@@ -68,12 +61,6 @@ class WearPredictionService:
 
     def setup(self, config: dict) -> None:
         self._l.info("WearPredictionService setup with config", config)
-
-        influx_cfg = {k: v for k, v in config.items() if k in ("url", "token", "org", "bucket")}
-        client = InfluxDBClient(**influx_cfg)
-        self.write_api = client.write_api(write_options=SYNCHRONOUS)
-        self.influx_db_org = config["org"]
-        self.influx_db_bucket = config["bucket"]
 
         self.window_size = int(config.get("window_size", 40))
         self.publish_interval = float(config.get("publish_interval", 2.0))
@@ -215,15 +202,14 @@ class WearPredictionService:
             fields["predicted_wear_level"] = float(wear_level)
 
         try:
-            self.write_api.write(
-                self.influx_db_bucket,
-                self.influx_db_org,
+            self.rabbitmq_publisher.send_message(
+                ROUTING_KEY_RECORDER,
                 {
                     "measurement": "wear_prediction",
                     "tags": {"source": "wear_prediction_service"},
                     "time": ts,
                     "fields": fields,
-                },
+                }
             )
         except Exception as e:
             self._l.warning(f"InfluxDB write failed: {e}")
