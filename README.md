@@ -11,9 +11,12 @@ cd UR3eDTCourse-group-8
 ### Install Dependencies
 
 This project is managed using [Poetry](https://python-poetry.org/). To install the dependencies, run the following in the project root, preferably in a virtual environment:
-
 ```bash
 poetry install
+```
+The project makes use of a submodule for the Godot visualization project, we have to initialize it:
+```bash
+git submodule update --init --recursive
 ```
 ### Execution Permissions
 
