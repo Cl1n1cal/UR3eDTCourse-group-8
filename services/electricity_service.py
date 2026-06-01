@@ -3,10 +3,8 @@ import math
 import time
 from datetime import datetime, timezone
 import threading
-from influxdb_client.client.influxdb_client import InfluxDBClient
-from influxdb_client.client.write_api import SYNCHRONOUS
 from communication.factory import RabbitMQFactory
-from communication.protocol import RobotArmStateKeys, RobotMode, ROUTING_KEY_STATE, ROUTING_KEY_ELECTRICITY
+from communication.protocol import RobotArmStateKeys, RobotMode, ROUTING_KEY_STATE, ROUTING_KEY_ELECTRICITY, ROUTING_KEY_RECORDER
 from startup.utils.logging_config import create_service_logger
 
 UR3E_IDLE_POWER_W = 50.0 # W
@@ -22,9 +20,6 @@ UR3E_MAX_JOINT_VELOCITY_RAD_S = [
 
 class ElectricityService:
     def __init__(self):
-        self.influx_db_org = None
-        self.influx_db_bucket = None
-        self.write_api = None
         self.rabbitmq_publisher = RabbitMQFactory.create_rabbitmq()
         self.rabbitmq_consumer = RabbitMQFactory.create_rabbitmq()
         
@@ -43,14 +38,9 @@ class ElectricityService:
         
     def setup(self, electricity_config):
         self._l.info("Electricity service setup with config ", electricity_config)
-        self.client = InfluxDBClient(**electricity_config)
         self.rabbitmq_publisher.connect_to_server()
         self.rabbitmq_consumer.connect_to_server()
         self.rabbitmq_consumer.subscribe(routing_key=ROUTING_KEY_STATE, on_message_callback=self._on_state_message)
-        
-        self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
-        self.influx_db_org = electricity_config["org"]
-        self.influx_db_bucket = electricity_config["bucket"]
         
         self.price_per_kwh_dkk = electricity_config.get("price_per_kwh_dkk", 2.50)
         self.eur_per_dkk = electricity_config.get("eur_per_dkk", 0.134)
@@ -125,9 +115,8 @@ class ElectricityService:
                     },
                 )
                 
-                self.write_api.write(
-                    self.influx_db_bucket,
-                    self.influx_db_org,
+                self.rabbitmq_publisher.send_message(
+                    ROUTING_KEY_RECORDER,
                     {
                         "measurement": "electricity",
                         "tags": {"source": "electricity_service"},
