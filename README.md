@@ -5,7 +5,7 @@
 ### Clone the repository
 To clone the repository and enter the project directory, run:
 ```bash
-git clone https://github.com/Cl1n1cal/UR3eDTCourse-group-8.git
+git clone --depth 1 https://github.com/Cl1n1cal/UR3eDTCourse-group-8.git
 cd UR3eDTCourse-group-8
 ```
 ### Install Dependencies
