@@ -100,7 +100,7 @@ class FaultCorrectionService:
             self.rabbitmq.send_message(routing_key=ROUTING_KEY_CTRL, message=msg)
             self.last_correction_time[monitor_type] = time.time()
 
-    def handle_wear_reset(self, monitor_type: str, wear_level: float = 0.0, duration: float = 5.0):
+    def handle_wear_reset(self, monitor_type: str, wear_level: float = 0.0, duration: float = 1.0):
         """Send a wear command to reset wear to `wear_level` for `duration` seconds."""
         msg = {
             CtrlMsgKeys.TYPE: CtrlMsgFields.INJECT_FAULT,
