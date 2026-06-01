@@ -45,6 +45,13 @@ class UR3eMonitor:
             return None
         return verdicts[-1][1]
 
+    def _skip_if_not_new_timestamp(self, timestamp: float) -> bool:
+        last_timestamp = getattr(self, "_last_timestamp", None)
+        if last_timestamp is not None and timestamp <= last_timestamp:
+            return True
+        self._last_timestamp = timestamp
+        return False
+
 class LatencyMonitor(UR3eMonitor):
     """Latency monitor that checks time alignment between the monitor and a sample.
 
@@ -57,6 +64,7 @@ class LatencyMonitor(UR3eMonitor):
         self.max_latency = max_latency
         self.sample_delay = sample_delay
         self.s_type = s_type
+        self._last_timestamp: float | None = None
         self._monitor = self._initialize_monitor()
 
     @property
@@ -107,6 +115,8 @@ class LatencyMonitor(UR3eMonitor):
 
         # Calculate the difference in time stamps for the mockup and the monitor service
         adj_time = time_stamp - (milliseconds_to_seconds(self.sample_delay))
+        if self._skip_if_not_new_timestamp(adj_time):
+            return None
         time_diff = np.absolute(sample_time - adj_time)
 
         output = self._monitor.update(
@@ -161,9 +171,8 @@ class VelocityMonitor(UR3eMonitor):
         if max_velocity is None or time is None:
             return None
 
-        if time <= self._last_timestamp:
+        if self._skip_if_not_new_timestamp(time):
             return None
-        self._last_timestamp = time
 
         # Get the current velocity of each joint
         qd_list = []
@@ -222,6 +231,12 @@ class AccelerationMonitor(UR3eMonitor):
         signal.
         """
         mockup_data = args[0]
+        time_new = mockup_data["time_stamp"] if mockup_data is not None else None
+        if mockup_data is None or time_new is None:
+            return None
+
+        if self._skip_if_not_new_timestamp(time_new):
+            return None
         # Here, the last velocity is also checked since in the first loop it will be None
         if self.old_mockup_data is None:
             #store old values
@@ -230,7 +245,6 @@ class AccelerationMonitor(UR3eMonitor):
         
         # Get the max velocity and the time from the newest mockup_data
         max_acceleration = mockup_data[RobotArmStateKeys.JOINT_MAX_ACCELERATION]
-        time_new = mockup_data["time_stamp"]
 
         if max_acceleration is None:
             self.old_mockup_data = mockup_data.copy()
@@ -261,7 +275,7 @@ class AccelerationMonitor(UR3eMonitor):
         time_diff = time_new - time_old
 
         # Prevent divission by 0
-        if time_diff == 0.0:
+        if time_diff <= 0.0:
             print("Warning: time difference is zero in AccelerationMonitor. Returning None.")
             return None
 
@@ -290,6 +304,7 @@ class StuckJointMonitor(UR3eMonitor):
         self.qd_threshold = qd_threshold
         self.q_diff_threshold = q_diff_threshold
         self.window_seconds = max(0.0, float(window_seconds))
+        self._last_timestamp: float | None = None
         self._monitor = self._initialize_monitor()
         self.old_mockup_data = None
 
@@ -327,8 +342,10 @@ class StuckJointMonitor(UR3eMonitor):
             return None
 
         time_stamp = mockup_data["time_stamp"]
+        if self._skip_if_not_new_timestamp(time_stamp):
+            return None
         time_diff = time_stamp - self.old_mockup_data["time_stamp"]
-        if time_diff == 0.0:
+        if time_diff <= 0.0:
             return None
 
         qd = abs(mockup_data[f"q_actual_{self.joint_index}"] - self.old_mockup_data[f"q_actual_{self.joint_index}"]) / time_diff
@@ -357,6 +374,7 @@ class MismatchMonitor(UR3eMonitor):
         self.diff_type = diff_type
         self.max_error = max_error
         self.window_seconds = max(0.0, float(window_seconds))
+        self._last_timestamp: float | None = None
         self._monitor = self._initialize_monitor()
 
     @property
@@ -394,6 +412,8 @@ class MismatchMonitor(UR3eMonitor):
                 return None
 
         error = sum((mockup_data[k] - sim_data[k]) ** 2 for k in keys) ** 0.5
+        if self._skip_if_not_new_timestamp(timestamp):
+            return None
         output = self._monitor.update(signal="q_diff", value=abs(error), timestamp=timestamp)
         return output.verdicts()
 
@@ -408,6 +428,7 @@ class WearPredictionMonitor(UR3eMonitor):
     def __init__(self, max_wear: float, window_seconds: float = 0.0):
         self.max_wear = max_wear
         self.window_seconds = max(0.0, float(window_seconds))
+        self._last_timestamp: float | None = None
         self._monitor = self._initialize_monitor()
 
     @property
@@ -442,10 +463,13 @@ class WearPredictionMonitor(UR3eMonitor):
             return None
 
         timestamp = wear_data.get("time_stamp", time.time())
+        if self._skip_if_not_new_timestamp(timestamp):
+            return None
 
         # Update the variable and signal
         self._monitor.get_variables().set("max_wear", self.max_wear)
         output = self._monitor.update(signal="wear", value=float(wear_val), timestamp=timestamp)
+        self._last_timestamp = timestamp
         return output.verdicts()
 
 class JointRotationMonitor(UR3eMonitor):
@@ -454,6 +478,7 @@ class JointRotationMonitor(UR3eMonitor):
         self.rotation_threshold = float(rotation_threshold)
         self._accumulated_rotations: float = 0.0
         self._prev_q: float | None = None
+        self._last_timestamp: float | None = None
         self._monitor = self._initialize_monitor()
 
     @property
@@ -503,6 +528,9 @@ class JointRotationMonitor(UR3eMonitor):
             self._accumulated_rotations += delta_rad / (2.0 * math.pi)
 
         self._prev_q = q_current
+
+        if self._skip_if_not_new_timestamp(ts):
+            return None
 
         if self.rotation_threshold > 0:
             self._monitor.get_variables().set("threshold", self.rotation_threshold)

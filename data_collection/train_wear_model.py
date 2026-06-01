@@ -1,4 +1,5 @@
 import sys, pickle, json, warnings
+import multiprocessing
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -52,6 +53,13 @@ RANDOM_STATE = 42
 TWO_PI = 2.0 * np.pi
 
 
+def safe_n_jobs(default: int = -1) -> int:
+    process = multiprocessing.current_process()
+    if process.name != "MainProcess" or process.daemon:
+        return 1
+    return default
+
+
 def load_and_clean(path: Path):
     df = pd.read_csv(path)
     print(f"Loaded {len(df)} rows from {path.name}")
@@ -83,12 +91,14 @@ def load_and_clean(path: Path):
 
 
 def make_models():
+    rf_n_jobs = safe_n_jobs()
+    xgb_n_jobs = safe_n_jobs()
     models = {
         "Random Forest": Pipeline([
             ("sc", StandardScaler()),
             ("rf", RandomForestRegressor(
                 n_estimators=400, max_depth=6,
-                min_samples_leaf=3, random_state=RANDOM_STATE, n_jobs=-1)),
+                min_samples_leaf=3, random_state=RANDOM_STATE, n_jobs=rf_n_jobs)),
         ]),
         "DNN (MLP)": Pipeline([
             ("sc", StandardScaler()),
@@ -110,7 +120,7 @@ def make_models():
             ("xgb", XGBRegressor(
                 n_estimators=200, max_depth=5, learning_rate=0.03,
                 colsample_bytree=0.8, subsample=0.8,
-                random_state=RANDOM_STATE, verbosity=0, n_jobs=-1)),
+                random_state=RANDOM_STATE, verbosity=0, n_jobs=xgb_n_jobs)),
         ])
     return models
 

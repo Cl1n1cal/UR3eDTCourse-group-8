@@ -2,6 +2,7 @@ import os
 import time
 import threading
 import pickle
+import multiprocessing
 import numpy as np
 from collections import deque
 from datetime import datetime, timezone
@@ -17,6 +18,26 @@ from startup.utils.logging_config import create_service_logger
 
 NUM_JOINTS = 6
 DEFAULT_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ml_models", "wear_model.pkl")
+
+
+def _safe_n_jobs(default: int = -1) -> int:
+    process = multiprocessing.current_process()
+    if process.name != "MainProcess" or process.daemon:
+        return 1
+    return default
+
+
+def _set_n_jobs_recursive(model, n_jobs: int) -> None:
+    if hasattr(model, "n_jobs"):
+        try:
+            model.n_jobs = n_jobs
+        except Exception:
+            pass
+
+    steps = getattr(model, "steps", None)
+    if steps:
+        for _, step in steps:
+            _set_n_jobs_recursive(step, n_jobs)
 
 
 class WearPredictionService:
@@ -80,6 +101,7 @@ class WearPredictionService:
             try:
                 with open(self._model_path, "rb") as f:
                     self._model = pickle.load(f)
+                _set_n_jobs_recursive(self._model, _safe_n_jobs())
                 self._l.info(f"Loaded wear model from {self._model_path}")
             except Exception as e:
                 self._l.warning(f"Could not load wear model: {e}. Running in raw-discrepancy mode.")
