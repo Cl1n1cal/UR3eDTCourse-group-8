@@ -19,13 +19,16 @@ class Rabbitmq:
         self.vhost = vhost
         self.exchange_name = exchange
         self.exchange_type = type
+        print(f"Rabbitmq created with: username: {username}, password: {password}")
         
         credentials = pika.PlainCredentials(username, password)
         if ssl is None:
             self.parameters = pika.ConnectionParameters(ip,
                                                         port,
                                                         vhost,
-                                                        credentials)
+                                                        credentials,
+                                                        heartbeat=600,
+                                                        blocked_connection_timeout=300)
         else:
             ssl_context = ssl_package.SSLContext(getattr(ssl_package, ssl["protocol"]))
             ssl_context.set_ciphers(ssl["ciphers"])
@@ -122,5 +125,8 @@ class Rabbitmq:
         return created_queue_name
 
     def start_consuming(self):
-        self.channel.start_consuming()
+        try:
+            self.channel.start_consuming()
+        except KeyboardInterrupt:
+            pass  # Exit cleanly on interrupt
 
