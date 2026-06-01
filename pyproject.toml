@@ -9,7 +9,7 @@ packages = [
     { include = "startup" },
     { include = "models"},
     { include = "services"},
-    { include = "utils"}
+    { include = "utils"},
     { include = "nn_folder"},
 ]
 
